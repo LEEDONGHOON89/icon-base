@@ -28,13 +28,14 @@ JAR_LOCAL="$BACKEND_DIR/icon-api/build/libs/$JAR_NAME"
 # ============================================================
 # ★ 서버 설정 (환경에 맞게 수정)
 # ============================================================
-declare -A SERVER_HOST SERVER_PORT SERVER_USER SERVER_DEPLOY_DIR SERVER_JAVA_BIN
+# [2026-04-17] sshpass로 패스워드 자동 입력 (대화형 프롬프트 제거)
+declare -A SERVER_HOST SERVER_PORT SERVER_USER SERVER_PASS SERVER_DEPLOY_DIR SERVER_JAVA_BIN
 
 # VM (local_vm_rocky_docker9.6)
-# [2026-04-17] VM 서버 IP 설정
 SERVER_HOST[vm]="192.168.118.130"
 SERVER_PORT[vm]="22"
 SERVER_USER[vm]="datasay"
+SERVER_PASS[vm]="datasay"
 SERVER_DEPLOY_DIR[vm]="/home/datasay/sw/icon-base"
 SERVER_JAVA_BIN[vm]="/home/datasay/sw/icon/jdk-17.0.17/bin/java"
 
@@ -42,6 +43,7 @@ SERVER_JAVA_BIN[vm]="/home/datasay/sw/icon/jdk-17.0.17/bin/java"
 SERVER_HOST[dev4]="개발서버4_IP"
 SERVER_PORT[dev4]="22"
 SERVER_USER[dev4]="dev_user"
+SERVER_PASS[dev4]="패스워드입력"
 SERVER_DEPLOY_DIR[dev4]="/home/datasay/sw/icon"
 SERVER_JAVA_BIN[dev4]="/home/datasay/sw/icon/jdk-17.0.17/bin/java"
 
@@ -49,6 +51,7 @@ SERVER_JAVA_BIN[dev4]="/home/datasay/sw/icon/jdk-17.0.17/bin/java"
 SERVER_HOST[dev6]="개발서버6_IP"
 SERVER_PORT[dev6]="22"
 SERVER_USER[dev6]="dev_user"
+SERVER_PASS[dev6]="패스워드입력"
 SERVER_DEPLOY_DIR[dev6]="/home/datasay/sw/icon"
 SERVER_JAVA_BIN[dev6]="/home/datasay/sw/icon/jdk-17.0.17/bin/java"
 
@@ -56,6 +59,7 @@ SERVER_JAVA_BIN[dev6]="/home/datasay/sw/icon/jdk-17.0.17/bin/java"
 SERVER_HOST[dev7]="개발서버7_IP"
 SERVER_PORT[dev7]="22"
 SERVER_USER[dev7]="dev_user"
+SERVER_PASS[dev7]="패스워드입력"
 SERVER_DEPLOY_DIR[dev7]="/home/datasay/sw/icon"
 SERVER_JAVA_BIN[dev7]="/home/datasay/sw/icon/jdk-17.0.17/bin/java"
 
@@ -93,13 +97,21 @@ fi
 S_HOST="${SERVER_HOST[$SERVER_ALIAS]}"
 S_PORT="${SERVER_PORT[$SERVER_ALIAS]}"
 S_USER="${SERVER_USER[$SERVER_ALIAS]}"
+S_PASS="${SERVER_PASS[$SERVER_ALIAS]}"
 S_DIR="${SERVER_DEPLOY_DIR[$SERVER_ALIAS]}"
 S_JAVA="${SERVER_JAVA_BIN[$SERVER_ALIAS]}"
 SSH_OPTS="-p $S_PORT -o StrictHostKeyChecking=no -o ConnectTimeout=10"
 SCP_OPTS="-P $S_PORT -o StrictHostKeyChecking=no"
 
-ssh_run()  { ssh $SSH_OPTS "$S_USER@$S_HOST" "$@"; }
-scp_send() { scp $SCP_OPTS "$@"; }
+# [2026-04-17] sshpass 설치 확인 (Git Bash: winget or choco, Linux: apt/yum)
+if ! command -v sshpass &>/dev/null; then
+    echo "sshpass가 설치되어 있지 않습니다."
+    echo "Git Bash에서 설치: choco install sshpass  또는  winget install sshpass"
+    exit 1
+fi
+
+ssh_run()  { sshpass -p "$S_PASS" ssh $SSH_OPTS "$S_USER@$S_HOST" "$@"; }
+scp_send() { sshpass -p "$S_PASS" scp $SCP_OPTS "$@"; }
 
 # ── 접속 확인 ─────────────────────────────────────────────────
 check_connection() {
