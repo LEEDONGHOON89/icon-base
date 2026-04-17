@@ -35,7 +35,7 @@ declare -A SERVER_HOST SERVER_PORT SERVER_USER SERVER_PASS SERVER_DEPLOY_DIR SER
 SERVER_HOST[vm]="192.168.118.130"
 SERVER_PORT[vm]="22"
 SERVER_USER[vm]="datasay"
-SERVER_PASS[vm]="datasay"
+SERVER_PASS[vm]="1234qwer!@"
 SERVER_DEPLOY_DIR[vm]="/home/datasay/sw/icon-base"
 SERVER_JAVA_BIN[vm]="/home/datasay/sw/icon/jdk-17.0.17/bin/java"
 
