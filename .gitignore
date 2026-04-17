@@ -4,7 +4,8 @@ old/
 # ===== Java / Gradle =====
 .gradle/
 build/
-out/
+# [2026-04-17] out/ → /out/ (루트 수준만 제외, adapter/out/ 경로 보호)
+/out/
 *.class
 *.jar
 *.war
