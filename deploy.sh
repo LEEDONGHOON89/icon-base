@@ -31,7 +31,8 @@ JAR_LOCAL="$BACKEND_DIR/icon-api/build/libs/$JAR_NAME"
 declare -A SERVER_HOST SERVER_PORT SERVER_USER SERVER_DEPLOY_DIR SERVER_JAVA_BIN
 
 # VM (local_vm_rocky_docker9.6)
-SERVER_HOST[vm]="192.168.0.10"
+# [2026-04-17] VM 서버 IP 설정
+SERVER_HOST[vm]="192.168.118.130"
 SERVER_PORT[vm]="22"
 SERVER_USER[vm]="root"
 SERVER_DEPLOY_DIR[vm]="/home/datasay/sw/icon"
