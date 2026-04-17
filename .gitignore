@@ -9,7 +9,7 @@ out/
 *.jar
 *.war
 *.ear
-!gradle-wrapper.jar
+!**/gradle/wrapper/gradle-wrapper.jar
 
 # ===== Spring Boot =====
 application-local.properties
