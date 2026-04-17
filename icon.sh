@@ -118,7 +118,12 @@ check_node() {
         sudo apt-get install -y nodejs
     elif [ "$os" = "redhat" ]; then
         curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
-        sudo yum install -y nodejs
+        # [2026-04-17] --allowerasing: 기존 nodejs 16(appstream) 충돌 시 교체 허용
+        if command -v dnf &>/dev/null; then
+            sudo dnf install -y nodejs --allowerasing
+        else
+            sudo yum install -y nodejs --allowerasing
+        fi
     else
         error "Node.js를 수동으로 설치하세요 (https://nodejs.org)"; exit 1
     fi
