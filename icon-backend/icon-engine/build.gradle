@@ -1,0 +1,56 @@
+dependencies {
+    // icon-common 모듈 의존성
+    implementation project(':icon-common')
+    // icon-entity 모듈 의존성 (공통 엔티티)
+    implementation project(':icon-entity')
+
+    // Spring Boot Web (API 통신용)
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // [2026-03-06] WebSocket 의존성 icon-gateway 서브모듈로 이동 — Agent 수신은 gateway가 전담
+
+    // Spring Boot Data JPA (데이터 접근용)
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+
+    // API 문서화 (SpringDoc OpenAPI)
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.5.0'
+
+    // 스케줄링
+    implementation 'org.springframework.boot:spring-boot-starter'
+
+    // JSON 처리
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+
+    // ModelMapper (엔티티-도메인 매핑)
+    implementation 'org.modelmapper:modelmapper:3.2.0'
+
+    // QueryDSL
+    implementation 'com.querydsl:querydsl-jpa:5.0.0:jakarta'
+    annotationProcessor 'com.querydsl:querydsl-apt:5.0.0:jakarta'
+    annotationProcessor 'jakarta.annotation:jakarta.annotation-api'
+    annotationProcessor 'jakarta.persistence:jakarta.persistence-api'
+
+    // PostgreSQL (데이터베이스)
+    runtimeOnly 'org.postgresql:postgresql'
+    testRuntimeOnly 'org.postgresql:postgresql'  // 테스트에서도 PostgreSQL 사용
+
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    // 테스트에서도 Lombok 사용을 위한 설정
+    testCompileOnly 'org.projectlombok:lombok'
+    testAnnotationProcessor 'org.projectlombok:lombok'
+
+    // 테스트용 H2
+    testImplementation 'com.h2database:h2'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'ch.qos.logback:logback-classic'
+}
+
+tasks.named('compileJava') {
+    options.annotationProcessorPath = configurations.annotationProcessor
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

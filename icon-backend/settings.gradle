@@ -1,0 +1,17 @@
+rootProject.name = 'icon'
+
+// 서브프로젝트 정의
+include 'icon-common'
+include 'icon-entity'
+include 'icon-engine'
+// [2026-03-06] icon-rpc-server 서브모듈 추가 — Agent WebSocket RPC 수신 전담
+include 'icon-rpc-server'
+include 'icon-api'
+
+// 프로젝트 디렉토리 설정
+project(':icon-common').projectDir = file('icon-common')
+project(':icon-entity').projectDir = file('icon-entity')
+project(':icon-engine').projectDir = file('icon-engine')
+// [2026-03-06] icon-rpc-server 프로젝트 디렉토리 설정
+project(':icon-rpc-server').projectDir = file('icon-rpc-server')
+project(':icon-api').projectDir = file('icon-api')

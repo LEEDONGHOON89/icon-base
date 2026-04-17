@@ -1,0 +1,43 @@
+// [2026-03-06] icon-rpc-server 서브모듈 — Agent WebSocket RPC 수신 전담 모듈
+// icon-engine의 룰 처리와 관심사 분리: RPC 수신/ACK vs. 엔진(탐지/처리)
+
+bootJar {
+    enabled = false
+}
+
+jar {
+    enabled = true
+    archiveClassifier = ''
+}
+
+dependencies {
+    // 공통 도메인/유틸
+    implementation project(':icon-common')
+    // 공통 엔티티
+    implementation project(':icon-entity')
+    // 룰 엔진 — 추후 파이프라인 연동 시 사용
+    implementation project(':icon-engine')
+
+    // Spring WebSocket — Agent ↔ Server RPC 통신
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
+
+    // Spring Data JPA — Agent/Session/TargetConfig 엔티티 관리
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+
+    // JSON 처리
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+
+    // Spring Web — REST API
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    testCompileOnly 'org.projectlombok:lombok'
+    testAnnotationProcessor 'org.projectlombok:lombok'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

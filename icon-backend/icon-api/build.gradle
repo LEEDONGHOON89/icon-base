@@ -1,0 +1,64 @@
+// 플러그인과 기본 설정은 루트 build.gradle에서 관리됨
+
+dependencies {
+    // icon-common 모듈 의존성
+    implementation project(':icon-common')
+    // icon-entity 모듈 의존성 (공통 엔티티)
+    implementation project(':icon-entity')
+    // icon-engine 모듈 의존성 (실시간 탐지 API용)
+    implementation project(':icon-engine')
+    // [2026-03-06] icon-rpc-server 모듈 의존성 — Agent WebSocket RPC 수신 핸들러 포함
+    implementation project(':icon-rpc-server')
+
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    // [2026-03-13] icon-rpc-server의 AgentRpcWebSocketHandler 직접 사용을 위해 추가
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
+    implementation 'org.modelmapper:modelmapper:3.2.4'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    implementation 'org.bgee.log4jdbc-log4j2:log4jdbc-log4j2-jdbc4.1:1.16'
+
+    // JWT
+    implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
+    implementation 'io.jsonwebtoken:jjwt-impl:0.11.5'
+    implementation 'io.jsonwebtoken:jjwt-jackson:0.11.5' // JSON 파싱용
+
+    // QueryDSL
+    implementation 'com.querydsl:querydsl-jpa:5.0.0:jakarta'
+    annotationProcessor 'com.querydsl:querydsl-apt:5.0.0:jakarta'
+    annotationProcessor 'jakarta.annotation:jakarta.annotation-api'
+    annotationProcessor 'jakarta.persistence:jakarta.persistence-api'
+
+    // TSID
+    implementation 'io.hypersistence:hypersistence-tsid:2.1.2'
+
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'
+    runtimeOnly 'org.postgresql:postgresql'
+
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    testImplementation 'com.h2database:h2'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.5.0'
+}
+
+tasks.withType(JavaCompile) {
+    options.compilerArgs += ["-parameters"]
+}
+
+// QueryDSL: rely on default generated-sources under build/
+// Do not include src/main/generated to avoid duplicate Q-type conflicts.
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+// Jar 중복 처리 (icon-engine과의 의존성 중복 해결)
+tasks.named('bootJar') {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}

@@ -1,0 +1,117 @@
+agent:
+  healthPort: 8080
+
+# [2026-02-25] 에이전트 모니터링 설정
+# 수집 지표: CPU, Java Heap, 시스템 메모리, GC, Thread, Queue/Spool 깊이, WebSocket 연결 상태
+# 출력: logs/agent-metrics.log (JSON Lines 형식)
+# 이후 FileCollector(format: LOG)로 수집 → 내부통제시스템 서버 연동 가능
+monitoring:
+  enabled: true
+  intervalMs: 30000          # 수집 주기 (기본 30초)
+  logPath: logs/agent-metrics.log
+  spoolRootPath: data        # 스풀 디렉토리 디스크 사용량 계산 기준 경로
+
+targets:
+  - id: systemA
+    rpc:
+      endpoint: wss://localhost:8443/rpc
+      tls:
+        keystorePath: certs/agent.p12
+        keystorePassword: changeit
+        truststorePath: certs/truststore.p12
+        truststorePassword: 1234qwer!@
+      # [2026-03-05] GZIP 압축 전송 추가: true=binary frame(GZIP), false=text frame(JSON)
+      compress: false
+    # [2026-03-05] 배치 정책 변경: 100건 도달 시 즉시 전송
+    maxBatchSize: 100
+    # [2026-03-05] 배치 정책 변경: 100건 미만이라도 500ms 경과 시 전송
+    maxBatchMs: 500
+    # 배치 최대 바이트 크기 (0이면 제한 없음)
+    maxBatchBytes: 0
+    collectors:
+        - id : 67ed8fa9-3f74-45e6-a24e-937095d412c1
+          type : "FILE"
+          name: "[systemA] appN"
+          enabled: false
+          path: D:\sources\icon\icon-agent_ai\logs
+          file : appN.csv
+          format : CSV
+          csvColumns : a,b,c,d,e
+          pollIntervalMs: 1000
+          maxLinesPerPoll: 500
+          # [2026-02-25] 3번: 단일 레코드 content 최대 바이트 (0이면 제한 없음)
+          # 기본값: 512KB = 524288 bytes
+          maxRecordBytes: 524288
+        - id : 67ed8fa9-3f74-45e6-a24e-937095d412c2
+          type : "FILE"
+          name: "[systemA] appA"
+          enabled: false
+          path: D:\sources\icon\icon-agent\logs
+          file : appA.log
+          format : LOG
+          pollIntervalMs: 1000
+          maxLinesPerPoll: 500
+          # [2026-02-25] 3번: 단일 레코드 content 최대 바이트
+          maxRecordBytes: 524288
+        - id : 67ed8fa9-3f74-45e6-a24e-937095d412c3
+          type : "JDBC"
+          name: "[systemA] MARIADB_SONAR_USERS"
+          enabled: true
+          url : "jdbc:postgresql://192.168.118.130:5432/icon"
+          username: "postgres"
+          password: "1234"
+          query: "SELECT * FROM rules where updated_at > ?"
+          field1 : "updated_at"
+          field2 : null
+          field1_type : "TIMESTAMP"
+          field2_type : null
+          field1_value : "2026-02-24 15:30:00"
+          field2_value : null
+          pollIntervalMs: 1000
+          maxLinesPerPoll: 500
+          # [2026-02-25] 3번: JDBC BLOB/CLOB 등 대용량 컬럼 대비 레코드 크기 제한
+          maxRecordBytes: 524288
+        - id : 67ed8fa9-3f74-45e6-a24e-937095d412c4
+          type : "JDBC"
+          name: "[systemA] MARIADB_SONAR_USERS2"
+          enabled: true
+          url : "jdbc:mysql://192.168.118.130:3306/sonar"
+          username: "root"
+          password: "1234"
+          query: "SELECT * FROM sonar_users where id > ?"
+          field1 : "id"
+          field2 : null
+          field1_type : "NUMBER"
+          field2_type : null
+          field1_value : 0
+          field2_value : null
+          pollIntervalMs: 1000
+          maxLinesPerPoll: 500
+          # [2026-02-25] 3번: JDBC BLOB/CLOB 등 대용량 컬럼 대비 레코드 크기 제한
+          maxRecordBytes: 524288
+
+  - id: systemB
+    rpc:
+      endpoint: wss://localhost:8444/rpc
+      tls:
+        keystorePath: certs/agent.p12
+        keystorePassword: changeit
+        truststorePath: certs/truststore.p12
+        truststorePassword: 1234qwer!@
+    # [2026-02-25] 1번: 배치 최대 바이트 크기
+    maxBatchBytes: 1048576
+    maxBatchSize: 500
+    maxBatchMs: 2000
+    collectors:
+      - id : 67ed8fa9-3f74-45e6-a24e-937095d412c1
+        type : "FILE"
+        name: "[systemB] appN"
+        enabled: false
+        path: ./logs
+        file : appN.log
+        pollIntervalMs: 1000
+        maxLinesPerPoll: 500
+        # [2026-02-25] 3번: 단일 레코드 content 최대 바이트
+        maxRecordBytes: 524288
+
+  

@@ -1,0 +1,56 @@
+plugins {
+    id 'org.springframework.boot' version '3.2.2' apply false
+    id 'io.spring.dependency-management' version '1.1.4' apply false
+    id 'java'
+}
+
+// 모든 서브프로젝트에 공통 설정 적용
+allprojects {
+    group = 'com.itmasters'
+    version = '0.0.1-SNAPSHOT'
+    
+    repositories {
+        mavenCentral()
+    }
+}
+
+// 서브프로젝트 공통 설정
+subprojects {
+    apply plugin: 'java'
+    apply plugin: 'org.springframework.boot'
+    apply plugin: 'io.spring.dependency-management'
+    
+    java {
+        sourceCompatibility = '17'
+    }
+    
+    configurations {
+        compileOnly {
+            extendsFrom annotationProcessor
+        }
+    }
+    
+    dependencies {
+        // 공통 의존성
+        implementation 'org.springframework.boot:spring-boot-starter'
+        implementation 'org.springframework.boot:spring-boot-starter-validation'
+        compileOnly 'org.projectlombok:lombok'
+        annotationProcessor 'org.projectlombok:lombok'
+        testImplementation 'org.springframework.boot:spring-boot-starter-test'
+        
+        // TSID 의존성
+        implementation 'com.github.f4b6a3:tsid-creator:5.2.6'
+    }
+    
+    tasks.named('test') {
+        useJUnitPlatform()
+    }
+
+    // 소스/컴파일 인코딩 UTF-8 고정 (한글 주석 등 인코딩 오류 방지)
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+    }
+}
+
+// 루트 프로젝트에는 Spring Boot 플러그인이 적용되지 않아 bootJar 태스크가 없음
+// 서브프로젝트에서 개별적으로 설정

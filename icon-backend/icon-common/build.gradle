@@ -1,0 +1,23 @@
+// 순수 Java 라이브러리 - Spring/JPA 의존성 없음
+bootJar {
+    enabled = false
+}
+
+jar {
+    enabled = true
+    archiveClassifier = ''
+}
+
+dependencies {
+    // 순수 Java 라이브러리만
+    implementation 'io.hypersistence:hypersistence-tsid:2.1.2'
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+    
+    // 테스트
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.9.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

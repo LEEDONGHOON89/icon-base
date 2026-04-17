@@ -1,0 +1,54 @@
+<configuration>
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{targetId}] %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/collector-agent.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>logs/collector-agent.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{targetId}] %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!--
+        [2026-02-25] agent.metrics 전용 appender
+        - 출력 형식: JSON Lines (1줄 = 1 메트릭 스냅샷, 타임스탬프 없이 순수 JSON만 기록)
+        - 파일 경로: logs/agent-metrics.log
+        - 이후 FileCollector(format: LOG)로 수집하여 내부통제시스템 서버 연동 가능
+        - 일별 롤링, 최대 10MB, 90일 보존
+    -->
+    <appender name="METRICS" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/agent-metrics.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>logs/agent-metrics.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>10MB</maxFileSize>
+            <maxHistory>90</maxHistory>
+            <totalSizeCap>200MB</totalSizeCap>
+        </rollingPolicy>
+        <!-- [2026-02-25] 순수 JSON 한 줄만 출력 (FileCollector 파싱 용이) -->
+        <encoder>
+            <pattern>%msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!--
+        [2026-02-25] agent.metrics 로거: METRICS appender로만 라우팅
+        - additivity=false: 루트 로거(collector-agent.log)에 중복 출력 방지
+    -->
+    <logger name="agent.metrics" level="INFO" additivity="false">
+        <appender-ref ref="METRICS"/>
+    </logger>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+</configuration>

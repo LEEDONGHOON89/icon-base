@@ -1,0 +1,7 @@
+/.gradle/
+/build/
+/data/
+/logs/
+*.class
+*.jar
+spool/

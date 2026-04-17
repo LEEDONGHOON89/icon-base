@@ -1,0 +1,9 @@
+{
+  "D:\\sources\\icon\\icon-backend\\samples\\simul\\v4_realtime\\realtime_test.csv@1773117852646" : {
+    "filePath" : "D:\\sources\\icon\\icon-backend\\samples\\simul\\v4_realtime\\realtime_test.csv",
+    "fileKey" : "D:\\sources\\icon\\icon-backend\\samples\\simul\\v4_realtime\\realtime_test.csv@1773117852646",
+    "offset" : 209,
+    "headers" : [ "﻿collect_time", "login", "column1", "column2" ],
+    "lastUpdatedMs" : 1773188217199
+  }
+}
