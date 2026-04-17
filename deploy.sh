@@ -157,6 +157,15 @@ deploy_backend() {
     scp_send "$JAR_LOCAL" "$S_USER@$S_HOST:$S_DIR/$JAR_NAME"
     info "JAR 전송 완료"
 
+    # [2026-04-17] DB 마이그레이션 SQL 파일 전송 (icon.sh에서 실행)
+    local MIGRATION_LOCAL="$BACKEND_DIR/icon-api/src/main/resources/db/migrations"
+    if [ -d "$MIGRATION_LOCAL" ]; then
+        info "마이그레이션 SQL 전송 중..."
+        ssh_run "mkdir -p '$S_DIR/db/migrations'"
+        scp_send -r "$MIGRATION_LOCAL/." "$S_USER@$S_HOST:$S_DIR/db/migrations/"
+        info "마이그레이션 SQL 전송 완료"
+    fi
+
     # 서버에서 백엔드 기동
     info "서버 백엔드 기동 중..."
     ssh_run "

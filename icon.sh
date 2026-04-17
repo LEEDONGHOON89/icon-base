@@ -11,7 +11,10 @@ BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_DIR="$BASE_DIR/icon-backend"
 FRONTEND_DIR="$BASE_DIR/icon-frontend"
 LOG_DIR="$BASE_DIR/logs"
-MIGRATION_DIR="$BACKEND_DIR/icon-api/src/main/resources/db/migrations"
+# [2026-04-17] 마이그레이션 경로: 소스 없는 서버는 BASE_DIR/db/migrations 사용
+MIGRATION_DIR="${BASE_DIR}/db/migrations"
+[ -d "$BACKEND_DIR/icon-api/src/main/resources/db/migrations" ] && \
+    MIGRATION_DIR="$BACKEND_DIR/icon-api/src/main/resources/db/migrations"
 JAR_NAME="icon-api-0.0.1-SNAPSHOT.jar"
 # [2026-04-17] 배포 시 JAR는 BASE_DIR에 위치 (deploy.sh와 일치)
 JAR_PATH="$BASE_DIR/$JAR_NAME"
