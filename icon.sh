@@ -366,12 +366,18 @@ build_frontend() {
     info "프론트엔드 빌드 완료"
 }
 
+fe_is_running() {
+    # [2026-04-17] Next.js standalone은 프로세스명을 'next-server'로 변경 → 포트로 체크
+    ss -tlnp 2>/dev/null | grep -q ":5160"
+}
+
+fe_get_pid() {
+    ss -tlnp 2>/dev/null | grep ":5160" | grep -oP 'pid=\K[0-9]+' | head -1 || true
+}
+
 start_frontend() {
-    local PID
-    # [2026-04-17] standalone 배포 방식: node server.js로 기동
-    PID=$(pgrep -f "node.*server.js" 2>/dev/null || true)
-    if [ -n "$PID" ]; then
-        info "프론트엔드 이미 실행 중 (PID: $PID)"; return
+    if fe_is_running; then
+        info "프론트엔드 이미 실행 중 (PID: $(fe_get_pid))"; return
     fi
 
     if [ ! -f "$FRONTEND_STANDALONE_DIR/server.js" ]; then
@@ -385,11 +391,10 @@ start_frontend() {
     cd "$FRONTEND_STANDALONE_DIR"
     PORT=5160 HOSTNAME=0.0.0.0 nohup node server.js > "$LOG_DIR/icon-frontend.log" 2>&1 &
     cd "$BASE_DIR"
-    sleep 3
+    sleep 4
 
-    PID=$(pgrep -f "node.*server.js" 2>/dev/null || true)
-    if [ -n "$PID" ]; then
-        info "프론트엔드 기동 성공 (PID: $PID) → 포트 5160"
+    if fe_is_running; then
+        info "프론트엔드 기동 성공 (PID: $(fe_get_pid)) → 포트 5160"
     else
         error "프론트엔드 기동 실패. 로그 확인: $LOG_DIR/icon-frontend.log"; exit 1
     fi
@@ -397,14 +402,13 @@ start_frontend() {
 
 stop_frontend() {
     local PID
-    # [2026-04-17] standalone 방식 PID 패턴 변경
-    PID=$(pgrep -f "node.*server.js" 2>/dev/null || true)
+    PID=$(fe_get_pid)
     if [ -z "$PID" ]; then info "프론트엔드 실행 중이지 않음"; return; fi
 
     info "프론트엔드 종료 중 (PID: $PID)..."
-    kill "$PID"
+    kill "$PID" 2>/dev/null || true
     sleep 2
-    if pgrep -f "node.*server.js" >/dev/null 2>&1; then
+    if fe_is_running; then
         kill -9 "$PID" 2>/dev/null || true
     fi
     info "프론트엔드 종료 완료"
@@ -465,8 +469,7 @@ cmd_status() {
     section "ICON 플랫폼 상태"
     local be_pid fe_pid
     be_pid=$(pgrep -f "$JAR_NAME" 2>/dev/null || true)
-    # [2026-04-17] standalone 방식 PID 패턴
-    fe_pid=$(pgrep -f "node.*server.js" 2>/dev/null || true)
+    fe_pid=$(fe_get_pid)
 
     if [ -n "$be_pid" ]; then
         echo -e "  백엔드  : ${GREEN}실행 중${NC} (PID: $be_pid)"
