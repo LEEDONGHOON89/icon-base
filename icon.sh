@@ -152,11 +152,19 @@ check_postgres() {
     # 서비스 기동 확인
     if ! pg_isready -h "$DB_HOST" -p "$DB_PORT" -q 2>/dev/null; then
         warn "PostgreSQL 서비스가 실행 중이지 않습니다 → 시작합니다"
-        if command -v systemctl &>/dev/null; then
-            sudo systemctl start postgresql
-            sudo systemctl enable postgresql
+        # [2026-04-17] Rocky/RHEL은 서비스명이 postgresql-{버전} 형태
+        local pg_service=""
+        for svc in postgresql postgresql-17 postgresql-16 postgresql-15 postgresql-14; do
+            if systemctl list-unit-files "${svc}.service" &>/dev/null | grep -q "${svc}.service"; then
+                pg_service="$svc"; break
+            fi
+        done
+
+        if [ -n "$pg_service" ]; then
+            sudo systemctl start "$pg_service"
+            sudo systemctl enable "$pg_service"
         else
-            sudo service postgresql start
+            error "PostgreSQL 서비스를 찾을 수 없습니다. 수동으로 시작하세요."; exit 1
         fi
         sleep 2
         if ! pg_isready -h "$DB_HOST" -p "$DB_PORT" -q; then
