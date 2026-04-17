@@ -69,12 +69,13 @@ COMPONENT="${1:-all}"    # frontend | backend | all
 SERVER_ALIAS="${2:-vm}"  # vm | dev4 | dev6 | dev7
 
 usage() {
-    echo "Usage: $0 [frontend|backend|all] [vm|dev4|dev6|dev7]"
+    echo "Usage: $0 [frontend|backend|all|iconsh] [vm|dev4|dev6|dev7]"
     echo ""
     echo "  Component:"
-    echo "    backend   백엔드(JAR)만 배포"
+    echo "    backend   백엔드(JAR) + icon.sh 배포"
     echo "    frontend  프론트엔드만 배포"
     echo "    all       전체 배포 (기본값)"
+    echo "    iconsh    icon.sh만 배포"
     echo ""
     echo "  Server:"
     echo "    vm    로컬 VM (기본값)"
@@ -85,7 +86,7 @@ usage() {
 }
 
 # 유효성 확인
-if [[ ! "$COMPONENT" =~ ^(frontend|backend|all)$ ]]; then
+if [[ ! "$COMPONENT" =~ ^(frontend|backend|all|iconsh)$ ]]; then
     error "잘못된 컴포넌트: $COMPONENT"; usage
 fi
 if [[ -z "${SERVER_HOST[$SERVER_ALIAS]:-}" ]]; then
@@ -244,6 +245,16 @@ deploy_frontend() {
 }
 
 # ─────────────────────────────────────────────────────────────
+# icon.sh 배포
+# ─────────────────────────────────────────────────────────────
+deploy_iconsh() {
+    section "icon.sh 배포"
+    scp_send "$BASE_DIR/icon.sh" "$S_USER@$S_HOST:$S_DIR/icon.sh"
+    ssh_run "chmod +x '$S_DIR/icon.sh'"
+    info "icon.sh 배포 완료"
+}
+
+# ─────────────────────────────────────────────────────────────
 # 메인
 # ─────────────────────────────────────────────────────────────
 section "ICON 배포 시작"
@@ -253,12 +264,17 @@ info "대상 서버 : $SERVER_ALIAS ($S_USER@$S_HOST)"
 check_connection
 
 case "$COMPONENT" in
-    backend)  deploy_backend  ;;
+    backend)
+        deploy_backend
+        deploy_iconsh
+        ;;
     frontend) deploy_frontend ;;
     all)
         deploy_backend
         deploy_frontend
+        deploy_iconsh
         ;;
+    iconsh) deploy_iconsh ;;
 esac
 
 section "배포 완료"
