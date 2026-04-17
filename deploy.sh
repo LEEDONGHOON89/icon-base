@@ -166,55 +166,62 @@ deploy_backend() {
 }
 
 # ─────────────────────────────────────────────────────────────
-# 프론트엔드 배포
+# 프론트엔드 배포 (standalone 빌드: 작업자 PC에서 빌드 후 실행 파일만 전송)
+# 서버에서 npm install / build 불필요 — node 실행만 필요
 # ─────────────────────────────────────────────────────────────
 deploy_frontend() {
     section "프론트엔드 배포"
 
+    # 로컬 빌드
+    info "로컬에서 Next.js standalone 빌드 중..."
+    cd "$FRONTEND_DIR"
+    npm install --silent
+    npm run build
+    cd "$BASE_DIR"
+
+    local STANDALONE_DIR="$FRONTEND_DIR/.next/standalone"
+    if [ ! -d "$STANDALONE_DIR" ]; then
+        error "standalone 빌드 결과 없음: $STANDALONE_DIR"
+        error "next.config.ts에 output: 'standalone' 설정을 확인하세요."
+        exit 1
+    fi
+    info "빌드 완료"
+
     # 서버에서 프론트 프로세스 중지
     info "서버 프론트엔드 중지 중..."
     ssh_run "
-        PID=\$(pgrep -f 'next start' 2>/dev/null || true)
+        PID=\$(pgrep -f 'node.*server.js' 2>/dev/null || true)
         if [ -n \"\$PID\" ]; then
             kill \$PID && sleep 2
-            pgrep -f 'next start' &>/dev/null && kill -9 \$PID 2>/dev/null || true
+            pgrep -f 'node.*server.js' &>/dev/null && kill -9 \$PID 2>/dev/null || true
             echo '프론트엔드 중지 완료'
         else
             echo '프론트엔드 실행 중이지 않음'
         fi
     "
 
-    # 소스 전송 (node_modules, .next 제외 → 서버에서 빌드)
-    info "소스 전송 중... (node_modules 제외)"
-    ssh_run "mkdir -p '$S_DIR/frontend'"
+    # 배포 파일 전송
+    # standalone/        → 실행에 필요한 최소 node_modules 포함
+    # .next/static/      → 정적 에셋 (JS, CSS)
+    # public/            → 이미지 등 public 파일
+    info "빌드 결과물 전송 중..."
+    ssh_run "mkdir -p '$S_DIR/frontend/.next/static' '$S_DIR/frontend/public' '$S_DIR/logs'"
 
-    rsync -az --delete \
-        --exclude='node_modules' \
-        --exclude='.next' \
-        --exclude='.git' \
-        --exclude='test-results' \
-        -e "ssh $SSH_OPTS" \
-        "$FRONTEND_DIR/" \
-        "$S_USER@$S_HOST:$S_DIR/frontend/"
-    info "소스 전송 완료"
+    scp_send -r "$STANDALONE_DIR/." "$S_USER@$S_HOST:$S_DIR/frontend/"
+    scp_send -r "$FRONTEND_DIR/.next/static/." "$S_USER@$S_HOST:$S_DIR/frontend/.next/static/"
+    scp_send -r "$FRONTEND_DIR/public/." "$S_USER@$S_HOST:$S_DIR/frontend/public/"
+    info "전송 완료"
 
-    # 서버에서 빌드 및 기동
-    info "서버에서 npm install & build 중... (시간이 걸릴 수 있습니다)"
+    # 서버에서 기동 (node server.js)
+    info "서버 프론트엔드 기동 중..."
     ssh_run "
-        cd '$S_DIR/frontend'
-        export NODE_ENV=production
-
-        echo '[1/3] npm install...'
-        npm install --silent
-
-        echo '[2/3] npm run build...'
-        npm run build
-
-        echo '[3/3] 프론트엔드 기동...'
         mkdir -p '$S_DIR/logs'
-        nohup npm start > '$S_DIR/logs/icon-frontend.log' 2>&1 &
+        cd '$S_DIR/frontend'
+        export PORT=5160
+        export HOSTNAME=0.0.0.0
+        nohup node server.js > '$S_DIR/logs/icon-frontend.log' 2>&1 &
         sleep 3
-        PID=\$(pgrep -f 'next start' 2>/dev/null || true)
+        PID=\$(pgrep -f 'node.*server.js' 2>/dev/null || true)
         if [ -n \"\$PID\" ]; then
             echo \"프론트엔드 기동 성공 (PID: \$PID)\"
         else
