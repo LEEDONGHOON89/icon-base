@@ -118,10 +118,12 @@ check_node() {
         sudo apt-get install -y nodejs
     elif [ "$os" = "redhat" ]; then
         curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
-        # [2026-04-17] --allowerasing: 기존 nodejs 16(appstream) 충돌 시 교체 허용
+        # [2026-04-17] 기존 nodejs/npm 제거 후 설치 (appstream 버전 충돌 방지)
         if command -v dnf &>/dev/null; then
+            sudo dnf remove -y nodejs npm nodejs-full-i18n 2>/dev/null || true
             sudo dnf install -y nodejs --allowerasing
         else
+            sudo yum remove -y nodejs npm 2>/dev/null || true
             sudo yum install -y nodejs --allowerasing
         fi
     else
