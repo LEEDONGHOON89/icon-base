@@ -1,0 +1,42 @@
+# ===== old 폴더 제외 =====
+old/
+
+# ===== Java / Gradle =====
+.gradle/
+build/
+out/
+*.class
+*.jar
+*.war
+*.ear
+!gradle-wrapper.jar
+
+# ===== Spring Boot =====
+application-local.properties
+application-local.yml
+*.log
+logs/
+
+# ===== Node.js / Next.js =====
+node_modules/
+.next/
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ===== IDE =====
+.idea/
+*.iml
+.vscode/
+*.suo
+*.user
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+desktop.ini
