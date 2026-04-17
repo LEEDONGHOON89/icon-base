@@ -34,8 +34,8 @@ declare -A SERVER_HOST SERVER_PORT SERVER_USER SERVER_DEPLOY_DIR SERVER_JAVA_BIN
 # [2026-04-17] VM 서버 IP 설정
 SERVER_HOST[vm]="192.168.118.130"
 SERVER_PORT[vm]="22"
-SERVER_USER[vm]="root"
-SERVER_DEPLOY_DIR[vm]="/home/datasay/sw/icon"
+SERVER_USER[vm]="datasay"
+SERVER_DEPLOY_DIR[vm]="/home/datasay/sw/icon-base"
 SERVER_JAVA_BIN[vm]="/home/datasay/sw/icon/jdk-17.0.17/bin/java"
 
 # 개발서버 4
@@ -131,16 +131,17 @@ deploy_backend() {
 
     # 서버에서 백엔드 프로세스 중지
     info "서버 백엔드 중지 중..."
+    # [2026-04-17] &>/dev/null → >/dev/null 2>&1 (sh 호환), || true로 set -e 방지
     ssh_run "
         PID=\$(pgrep -f '$JAR_NAME' 2>/dev/null || true)
         if [ -n \"\$PID\" ]; then
             kill \$PID && sleep 3
-            pgrep -f '$JAR_NAME' &>/dev/null && kill -9 \$PID 2>/dev/null || true
+            pgrep -f '$JAR_NAME' >/dev/null 2>&1 && kill -9 \$PID 2>/dev/null || true
             echo '백엔드 중지 완료'
         else
             echo '백엔드 실행 중이지 않음'
         fi
-    "
+    " || true
 
     # JAR 전송
     info "JAR 전송 중..."
@@ -190,16 +191,17 @@ deploy_frontend() {
 
     # 서버에서 프론트 프로세스 중지
     info "서버 프론트엔드 중지 중..."
+    # [2026-04-17] &>/dev/null → >/dev/null 2>&1 (sh 호환), || true로 set -e 방지
     ssh_run "
         PID=\$(pgrep -f 'node.*server.js' 2>/dev/null || true)
         if [ -n \"\$PID\" ]; then
             kill \$PID && sleep 2
-            pgrep -f 'node.*server.js' &>/dev/null && kill -9 \$PID 2>/dev/null || true
+            pgrep -f 'node.*server.js' >/dev/null 2>&1 && kill -9 \$PID 2>/dev/null || true
             echo '프론트엔드 중지 완료'
         else
             echo '프론트엔드 실행 중이지 않음'
         fi
-    "
+    " || true
 
     # 배포 파일 전송
     # standalone/        → 실행에 필요한 최소 node_modules 포함
