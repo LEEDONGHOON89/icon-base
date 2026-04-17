@@ -63,7 +63,9 @@ public class SecurityConfig {
   @Bean
   public CorsConfigurationSource corsConfigurationSource() {
     CorsConfiguration configuration = new CorsConfiguration();
-    configuration.setAllowedOrigins(List.of("http://localhost:5160","http://localhost:8443")); // 프론트엔드 Origin 허용
+    // [2026-04-17] allowedOrigins → allowedOriginPatterns: credentials 사용 시 와일드카드 허용
+    // localhost뿐 아니라 VM/개발서버 IP에서 접속해도 동작하도록 변경
+    configuration.setAllowedOriginPatterns(List.of("*"));
     configuration.setAllowedMethods(
         Arrays.asList("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")); // 허용할 HTTP 메서드
     configuration.setAllowedHeaders(List.of("*")); // 모든 헤더 허용
