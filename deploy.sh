@@ -16,7 +16,8 @@ GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; CYAN='\033[0;36m'; NC
 info()    { echo -e "${GREEN}[INFO]${NC}  $*"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 error()   { echo -e "${RED}[ERROR]${NC} $*"; }
-section() { echo -e "\n${CYAN}══════════════════════════════════════${NC}"; echo -e "${CYAN}  $*${NC}"; echo -e "${CYAN}══════════════════════════════════════${NC}"; }
+# [2026-04-17] 유니코드 박스문자 → ASCII (Git Bash 호환)
+section() { echo -e "\n${CYAN}======================================${NC}"; echo -e "${CYAN}  $*${NC}"; echo -e "${CYAN}======================================${NC}"; }
 
 # ── 로컬 경로 ─────────────────────────────────────────────────
 BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -35,7 +36,7 @@ declare -A SERVER_HOST SERVER_PORT SERVER_USER SERVER_PASS SERVER_DEPLOY_DIR SER
 SERVER_HOST[vm]="192.168.118.130"
 SERVER_PORT[vm]="22"
 SERVER_USER[vm]="datasay"
-SERVER_PASS[vm]="1234qwer!@"
+SERVER_PASS[vm]='1234qwer!@'
 SERVER_DEPLOY_DIR[vm]="/home/datasay/sw/icon-base"
 SERVER_JAVA_BIN[vm]="/home/datasay/sw/icon/jdk-17.0.17/bin/java"
 
@@ -110,8 +111,9 @@ if ! command -v sshpass &>/dev/null; then
     exit 1
 fi
 
-ssh_run()  { sshpass -p "$S_PASS" ssh $SSH_OPTS "$S_USER@$S_HOST" "$@"; }
-scp_send() { sshpass -p "$S_PASS" scp $SCP_OPTS "$@"; }
+# [2026-04-17] SSHPASS 환경변수 방식으로 변경 (특수문자 패스워드 안전하게 처리)
+ssh_run()  { SSHPASS="$S_PASS" sshpass -e ssh $SSH_OPTS "$S_USER@$S_HOST" "$@"; }
+scp_send() { SSHPASS="$S_PASS" sshpass -e scp $SCP_OPTS "$@"; }
 
 # ── 접속 확인 ─────────────────────────────────────────────────
 check_connection() {
