@@ -13,7 +13,11 @@ FRONTEND_DIR="$BASE_DIR/icon-frontend"
 LOG_DIR="$BASE_DIR/logs"
 MIGRATION_DIR="$BACKEND_DIR/icon-api/src/main/resources/db/migrations"
 JAR_NAME="icon-api-0.0.1-SNAPSHOT.jar"
-JAR_PATH="$BACKEND_DIR/icon-api/build/libs/$JAR_NAME"
+# [2026-04-17] 배포 시 JAR는 BASE_DIR에 위치 (deploy.sh와 일치)
+JAR_PATH="$BASE_DIR/$JAR_NAME"
+JAR_BUILD_PATH="$BACKEND_DIR/icon-api/build/libs/$JAR_NAME"
+# [2026-04-17] standalone 빌드 배포 경로 (deploy.sh와 일치)
+FRONTEND_STANDALONE_DIR="$BASE_DIR/frontend"
 
 # ── DB 접속 정보 ─────────────────────────────────────────────
 DB_HOST="localhost"
@@ -149,13 +153,19 @@ check_postgres() {
         fi
     fi
 
-    # 서비스 기동 확인
-    if ! pg_isready -h "$DB_HOST" -p "$DB_PORT" -q 2>/dev/null; then
+    # [2026-04-17] pg_isready: TCP(-h) 실패 시 unix socket으로 재시도
+    pg_is_running() {
+        pg_isready -h "$DB_HOST" -p "$DB_PORT" -q 2>/dev/null || \
+        pg_isready -q 2>/dev/null || \
+        pgrep -f "postgres.*-D" >/dev/null 2>&1
+    }
+
+    if ! pg_is_running; then
         warn "PostgreSQL 서비스가 실행 중이지 않습니다 → 시작합니다"
-        # [2026-04-17] Rocky/RHEL은 서비스명이 postgresql-{버전} 형태
+        # [2026-04-17] Rocky/RHEL 서비스명 탐색: systemctl로 active 여부 확인
         local pg_service=""
-        for svc in postgresql postgresql-17 postgresql-16 postgresql-15 postgresql-14; do
-            if systemctl list-unit-files "${svc}.service" &>/dev/null | grep -q "${svc}.service"; then
+        for svc in postgresql-17 postgresql-16 postgresql-15 postgresql-14 postgresql; do
+            if systemctl list-unit-files 2>/dev/null | grep -q "^${svc}\.service"; then
                 pg_service="$svc"; break
             fi
         done
@@ -167,7 +177,7 @@ check_postgres() {
             error "PostgreSQL 서비스를 찾을 수 없습니다. 수동으로 시작하세요."; exit 1
         fi
         sleep 2
-        if ! pg_isready -h "$DB_HOST" -p "$DB_PORT" -q; then
+        if ! pg_is_running; then
             error "PostgreSQL 시작 실패. 수동으로 확인하세요."; exit 1
         fi
     fi
@@ -207,8 +217,12 @@ setup_database() {
         if ! sudo grep -q "host.*$DB_NAME.*$DB_USER.*md5" "$PG_HBA" 2>/dev/null; then
             info "pg_hba.conf에 md5 인증 규칙 추가 중..."
             echo "host    $DB_NAME    $DB_USER    127.0.0.1/32    md5" | sudo tee -a "$PG_HBA" > /dev/null
-            sudo -u postgres pg_ctlcluster $(pg_lsclusters -h | awk '{print $1" "$2}' | head -1) reload 2>/dev/null || \
-            sudo systemctl reload postgresql 2>/dev/null || true
+            # [2026-04-17] pg_lsclusters 제거 (Debian 전용) → systemctl reload 사용
+            for svc in postgresql-17 postgresql-16 postgresql-15 postgresql-14 postgresql; do
+                if systemctl list-unit-files 2>/dev/null | grep -q "^${svc}\.service"; then
+                    sudo systemctl reload "$svc" 2>/dev/null || true; break
+                fi
+            done
         fi
     fi
 }
@@ -282,10 +296,16 @@ run_migrations() {
 # ─────────────────────────────────────────────────────────────
 build_backend() {
     section "백엔드 빌드"
+    if [ ! -d "$BACKEND_DIR" ]; then
+        error "백엔드 소스 없음: $BACKEND_DIR"
+        error "서버에서는 rebuild 불가. 작업자 PC에서 배포하세요."; exit 1
+    fi
     info "Gradle 빌드 중... (시간이 걸릴 수 있습니다)"
     cd "$BACKEND_DIR"
     ./gradlew :icon-api:bootJar -x test --quiet
     cd "$BASE_DIR"
+    # [2026-04-17] 빌드 후 JAR를 BASE_DIR로 복사 (배포 경로와 일치)
+    cp "$JAR_BUILD_PATH" "$JAR_PATH"
     info "백엔드 빌드 완료: $JAR_PATH"
 }
 
@@ -297,8 +317,10 @@ start_backend() {
     fi
 
     if [ ! -f "$JAR_PATH" ]; then
-        warn "JAR 파일 없음 → 빌드를 시작합니다"
-        build_backend
+        # [2026-04-17] 서버에서 빌드 시도 제거 → 배포 안내
+        error "JAR 파일 없음: $JAR_PATH"
+        error "작업자 PC에서 './deploy.sh backend vm' 을 실행하여 배포하세요."
+        exit 1
     fi
 
     mkdir -p "$LOG_DIR"
@@ -346,31 +368,26 @@ build_frontend() {
 
 start_frontend() {
     local PID
-    PID=$(pgrep -f "next start" 2>/dev/null || true)
+    # [2026-04-17] standalone 배포 방식: node server.js로 기동
+    PID=$(pgrep -f "node.*server.js" 2>/dev/null || true)
     if [ -n "$PID" ]; then
         info "프론트엔드 이미 실행 중 (PID: $PID)"; return
     fi
 
-    # node_modules 확인
-    if [ ! -d "$FRONTEND_DIR/node_modules" ]; then
-        warn "node_modules 없음 → npm install 진행"
-        cd "$FRONTEND_DIR" && npm install --silent && cd "$BASE_DIR"
-    fi
-
-    # .next 빌드 결과 확인
-    if [ ! -d "$FRONTEND_DIR/.next" ]; then
-        warn ".next 빌드 없음 → 빌드를 시작합니다"
-        build_frontend
+    if [ ! -f "$FRONTEND_STANDALONE_DIR/server.js" ]; then
+        error "프론트엔드 배포 파일 없음: $FRONTEND_STANDALONE_DIR/server.js"
+        error "작업자 PC에서 './deploy.sh frontend vm' 을 실행하여 배포하세요."
+        exit 1
     fi
 
     mkdir -p "$LOG_DIR"
     section "프론트엔드 기동"
-    cd "$FRONTEND_DIR"
-    nohup npm start > "$LOG_DIR/icon-frontend.log" 2>&1 &
+    cd "$FRONTEND_STANDALONE_DIR"
+    PORT=5160 HOSTNAME=0.0.0.0 nohup node server.js > "$LOG_DIR/icon-frontend.log" 2>&1 &
     cd "$BASE_DIR"
     sleep 3
 
-    PID=$(pgrep -f "next start" 2>/dev/null || true)
+    PID=$(pgrep -f "node.*server.js" 2>/dev/null || true)
     if [ -n "$PID" ]; then
         info "프론트엔드 기동 성공 (PID: $PID) → 포트 5160"
     else
@@ -380,13 +397,14 @@ start_frontend() {
 
 stop_frontend() {
     local PID
-    PID=$(pgrep -f "next start" 2>/dev/null || true)
+    # [2026-04-17] standalone 방식 PID 패턴 변경
+    PID=$(pgrep -f "node.*server.js" 2>/dev/null || true)
     if [ -z "$PID" ]; then info "프론트엔드 실행 중이지 않음"; return; fi
 
     info "프론트엔드 종료 중 (PID: $PID)..."
     kill "$PID"
     sleep 2
-    if pgrep -f "next start" &>/dev/null; then
+    if pgrep -f "node.*server.js" >/dev/null 2>&1; then
         kill -9 "$PID" 2>/dev/null || true
     fi
     info "프론트엔드 종료 완료"
@@ -447,7 +465,8 @@ cmd_status() {
     section "ICON 플랫폼 상태"
     local be_pid fe_pid
     be_pid=$(pgrep -f "$JAR_NAME" 2>/dev/null || true)
-    fe_pid=$(pgrep -f "next start" 2>/dev/null || true)
+    # [2026-04-17] standalone 방식 PID 패턴
+    fe_pid=$(pgrep -f "node.*server.js" 2>/dev/null || true)
 
     if [ -n "$be_pid" ]; then
         echo -e "  백엔드  : ${GREEN}실행 중${NC} (PID: $be_pid)"
