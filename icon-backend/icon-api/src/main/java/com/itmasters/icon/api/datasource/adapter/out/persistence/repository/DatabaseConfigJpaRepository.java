@@ -1,0 +1,13 @@
+package com.itmasters.icon.api.datasource.adapter.out.persistence.repository;
+
+import com.itmasters.icon.api.datasource.adapter.out.persistence.entity.DatabaseConfigEntity;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.List;
+import java.util.Optional;
+
+public interface DatabaseConfigJpaRepository extends JpaRepository<DatabaseConfigEntity, String> {
+    Optional<DatabaseConfigEntity> findByDataSourceId(String dataSourceId);
+    List<DatabaseConfigEntity> findAllByDataSourceId(String dataSourceId);
+}
+
