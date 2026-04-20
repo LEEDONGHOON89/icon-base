@@ -24,14 +24,19 @@ public class StandardFieldMapper {
      */
     public StandardFieldEntity toEntity(StandardField domain) {
         if (domain == null) return null;
-        
+
         if (domain.getFieldId() == null) {
             domain.assignId(idGenerator.generateId(EntityType.STANDARD_FIELD));
         }
-        
-        StandardFieldEntity entity = modelMapper.map(domain, StandardFieldEntity.class);
-        // 필드명이 다르므로 수동 매핑
+
+        // [2026-04-20] modelMapper 대신 명시적 매핑 (fieldCategory→category 등 이름 불일치 방지)
+        StandardFieldEntity entity = new StandardFieldEntity();
         entity.setStandardFieldId(domain.getFieldId());
+        entity.setCategory(domain.getCategory());
+        entity.setDisplayName(domain.getDisplayName());
+        entity.setDataType(domain.getDataType());
+        entity.setDescription(domain.getDescription());
+        entity.setIsActive(domain.getIsActive() != null ? domain.getIsActive() : true);
         return entity;
     }
     

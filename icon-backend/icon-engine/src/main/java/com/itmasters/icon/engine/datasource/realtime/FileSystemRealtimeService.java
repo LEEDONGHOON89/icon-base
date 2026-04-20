@@ -114,12 +114,29 @@ public class FileSystemRealtimeService {
                     .filter(r -> filePath.toAbsolutePath().toString().equals(r.getFilePath()))
                     .findFirst();
             if (byPath.isPresent()) {
-                log.info("[{}] File rotation detected (rename) - {}, resetting position",
-                        dataSourceId, filePath.getFileName());
-                positions.remove(byPath.get().getFileKey());
+                FileSystemRealtimePositionRecord oldRecord = byPath.get();
+                positions.remove(oldRecord.getFileKey());
+
+                // [2026-04-20] Windows에서 에디터 저장 시 creationTime 변경으로 fileKey가 바뀌는 경우 처리.
+                // currentSize >= oldOffset이면 파일 내용이 보존된 단순 재생성(에디터 저장)이므로
+                // 기존 offset과 headers를 그대로 이어받아 중복 수집 방지.
+                // currentSize < oldOffset인 경우에만 진짜 rotation으로 판단하여 offset 리셋.
+                if (currentSize >= oldRecord.getOffset()) {
+                    log.info("[{}] File re-created (editor save, key changed) - {}, keeping offset: {}",
+                            dataSourceId, filePath.getFileName(), oldRecord.getOffset());
+                    pos = new FileSystemRealtimePositionRecord(
+                            filePath.toAbsolutePath().toString(), currentKey, oldRecord.getOffset());
+                    pos.setHeaders(oldRecord.getHeaders());
+                } else {
+                    log.info("[{}] File rotation detected (rename) - {}, resetting position",
+                            dataSourceId, filePath.getFileName());
+                    pos = new FileSystemRealtimePositionRecord(
+                            filePath.toAbsolutePath().toString(), currentKey, 0L);
+                }
+            } else {
+                pos = new FileSystemRealtimePositionRecord(
+                        filePath.toAbsolutePath().toString(), currentKey, 0L);
             }
-            pos = new FileSystemRealtimePositionRecord(
-                    filePath.toAbsolutePath().toString(), currentKey, 0L);
             positions.put(currentKey, pos);
         }
 

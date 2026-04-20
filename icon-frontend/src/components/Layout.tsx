@@ -28,6 +28,7 @@ import {
   MagnifyingGlassCircleIcon,
   SparklesIcon,
   ServerStackIcon,
+  ScissorsIcon,
 } from "@heroicons/react/24/outline";
 import { useState } from "react";
 import { ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
@@ -58,7 +59,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (
       pathname.startsWith("/fields") ||
       pathname.startsWith("/data-sources") ||
-      pathname.startsWith("/agents")
+      pathname.startsWith("/agents") ||
+      pathname.startsWith("/parsers")
     ) {
       expanded.push("system");
     }
@@ -283,6 +285,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           name: "에이전트 관리",
           href: "/agents",
           icon: ServerStackIcon,
+        },
+        // [2026-04-20] 파서 관리 메뉴 추가
+        {
+          name: "파서 관리",
+          href: "/parsers",
+          icon: ScissorsIcon,
         },
       ],
     },

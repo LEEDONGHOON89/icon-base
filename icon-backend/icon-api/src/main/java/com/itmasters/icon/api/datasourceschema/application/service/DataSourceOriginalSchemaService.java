@@ -5,6 +5,8 @@ import com.itmasters.icon.api.datasource.adapter.out.persistence.repository.Data
 import com.itmasters.icon.api.datasourceschema.adapter.in.web.DataSourceOriginalSchemaDto;
 import com.itmasters.icon.api.datasourceschema.adapter.out.persistence.entity.DataSourceOriginalSchemaEntity;
 import com.itmasters.icon.api.datasourceschema.adapter.out.persistence.repository.DataSourceOriginalSchemaJpaRepository;
+import com.itmasters.icon.api.parser.adapter.out.persistence.entity.ParserEntity;
+import com.itmasters.icon.api.parser.adapter.out.persistence.repository.ParserJpaRepository;
 import com.itmasters.icon.api.standardfield.adapter.out.persistence.entity.StandardFieldEntity;
 import com.itmasters.icon.api.standardfield.adapter.out.persistence.repository.StandardFieldJpaRepository;
 import com.itmasters.icon.common.domain.type.FieldDataType;
@@ -34,6 +36,8 @@ public class DataSourceOriginalSchemaService {
     private final DataSourceOriginalSchemaJpaRepository originalSchemaRepository;
     private final DataSourceJpaRepository dataSourceRepository;
     private final StandardFieldJpaRepository standardFieldRepository;
+    // [2026-04-20] 파서 연동
+    private final ParserJpaRepository parserRepository;
     private final IdGenerator idGenerator;
 
     /**
@@ -104,7 +108,18 @@ public class DataSourceOriginalSchemaService {
                         schema.unmapStandardField();
                     }
                 }
-                
+
+                // [2026-04-20] 파서 연동 처리
+                if (request.getParserId() != null) {
+                    if (StringUtils.hasText(request.getParserId())) {
+                        ParserEntity parser = parserRepository.findById(request.getParserId())
+                                .orElseThrow(() -> new IllegalArgumentException("파서를 찾을 수 없습니다: " + request.getParserId()));
+                        schema.setParser(parser);
+                    } else {
+                        schema.setParser(null);
+                    }
+                }
+
                 allSchemas.add(schema);
             } else {
                 // 새 필드 생성
@@ -131,7 +146,14 @@ public class DataSourceOriginalSchemaService {
                             .orElseThrow(() -> new IllegalArgumentException("표준 필드를 찾을 수 없습니다: " + request.getStandardFieldId()));
                     newSchema.setStandardField(standardField);
                 }
-                
+
+                // [2026-04-20] 파서 연동 처리
+                if (StringUtils.hasText(request.getParserId())) {
+                    ParserEntity parser = parserRepository.findById(request.getParserId())
+                            .orElseThrow(() -> new IllegalArgumentException("파서를 찾을 수 없습니다: " + request.getParserId()));
+                    newSchema.setParser(parser);
+                }
+
                 allSchemas.add(newSchema);
             }
         }
@@ -167,7 +189,17 @@ public class DataSourceOriginalSchemaService {
         if (request.getIsActive() != null) {
             schema.updateActiveStatus(request.getIsActive());
         }
-        
+
+        // [2026-04-20] 파서 연동 — parserId가 있으면 파서 설정, 없으면 파서 해제
+        if (StringUtils.hasText(request.getParserId())) {
+            ParserEntity parser = parserRepository.findById(request.getParserId())
+                    .orElseThrow(() -> new IllegalArgumentException("파서를 찾을 수 없습니다: " + request.getParserId()));
+            schema.setParser(parser);
+        } else if (request.getParserId() != null) {
+            // 빈 문자열 or 명시적 null → 파서 해제
+            schema.setParser(null);
+        }
+
         DataSourceOriginalSchemaEntity saved = originalSchemaRepository.save(schema);
         return toResponse(saved);
     }
@@ -188,6 +220,9 @@ public class DataSourceOriginalSchemaService {
                 .isActive(entity.isActive())
                 .standardFieldId(entity.getStandardField() != null ? entity.getStandardField().getStandardFieldId() : null)
                 .standardFieldName(entity.getStandardField() != null ? entity.getStandardField().getStandardFieldId() : null)
+                // [2026-04-20] 파서 연동
+                .parserId(entity.getParser() != null ? entity.getParser().getParserId() : null)
+                .parserName(entity.getParser() != null ? entity.getParser().getParserName() : null)
                 .build();
     }
 

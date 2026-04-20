@@ -2,6 +2,7 @@ package com.itmasters.icon.api.datasourceschema.adapter.out.persistence.entity;
 
 import com.itmasters.icon.entity.Auditable;
 import com.itmasters.icon.api.datasource.adapter.out.persistence.entity.DataSourceEntity;
+import com.itmasters.icon.api.parser.adapter.out.persistence.entity.ParserEntity;
 import com.itmasters.icon.api.standardfield.adapter.out.persistence.entity.StandardFieldEntity;
 import com.itmasters.icon.common.domain.type.FieldDataType;
 import jakarta.persistence.*;
@@ -58,6 +59,11 @@ public class DataSourceOriginalSchemaEntity extends Auditable {
     
     // transform_rule 컬럼 제거에 따라 필드 삭제
     
+    // [2026-04-20] 파서 연동 - 원본 필드에 적용할 파서 (선택사항)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "parser_id")
+    private ParserEntity parser;
+
     // ===== 비즈니스 메서드 =====
     
     /**

@@ -63,7 +63,7 @@
 | 테이블 | 설명 | 주요 컬럼 |
 |---|---|---|
 | `data_sources` | 데이터소스 정의 | - |
-| `data_source_schemas` | 데이터소스 원본 필드 스키마 | - |
+| `data_source_schemas` | 데이터소스 원본 필드 스키마 | `parser_id` (FK → parsers, 선택) |
 | `profiles` | 데이터소스 프로파일 (원본→표준 필드 매핑) | `profile_id`, `data_source_id`, `profile_purpose`, `entity_type`, `entity_id_field`, `group_key`, `timestamp_key`, `store_fields`, `event_type_mapping` |
 | `ds_api_config` | API 데이터소스 연결 설정 | - |
 | `ds_api_log` | API 데이터소스 수집 로그 | - |
@@ -94,6 +94,15 @@
 | 테이블 | 설명 |
 |---|---|
 | `standard_fields` | 표준 필드 정의 (센서 조건 필드 동적 조회 기준) |
+
+---
+
+## 9. 파서
+
+| 테이블 | 설명 | 주요 컬럼 |
+|---|---|---|
+| `parsers` | 파서 정의 (DELIMITER/FIXED_WIDTH/REGEX) | `parser_id`, `parser_name`, `parser_type`, `is_active` |
+| `parser_rules` | 파서 추출 규칙 (1 파서 : N 규칙) | `parser_rule_id`, `parser_id`(FK), `rule_order`, `config_json`(JSONB), `target_standard_field_id`, `target_field_name` |
 
 ---
 

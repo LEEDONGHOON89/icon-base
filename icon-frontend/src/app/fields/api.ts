@@ -15,6 +15,23 @@ export interface StandardField {
   validationRule?: string | null;
 }
 
+// [2026-04-20] 표준 필드 생성/수정 요청 타입 추가
+export interface CreateStandardFieldRequest {
+  fieldName: string;
+  displayName: string;
+  dataType: string;
+  category?: string;
+  description?: string;
+}
+
+export interface UpdateStandardFieldRequest {
+  displayName: string;
+  dataType: string;
+  category?: string;
+  description?: string;
+  isActive: boolean;
+}
+
 // 엔티티 필드 타입
 export interface EntityField {
   entityFieldId: string;
@@ -31,6 +48,23 @@ export async function fetchStandardFields(): Promise<StandardField[]> {
   const response = await api.get("/api/v1/standard-fields");
   // ResponseList 구조: { total: number, data: T[] }
   return response.data.data || [];
+}
+
+// [2026-04-20] 표준 필드 생성
+export async function createStandardField(data: CreateStandardFieldRequest): Promise<StandardField> {
+  const response = await api.post("/api/v1/standard-fields", data);
+  return response.data;
+}
+
+// [2026-04-20] 표준 필드 수정
+export async function updateStandardField(fieldId: string, data: UpdateStandardFieldRequest): Promise<StandardField> {
+  const response = await api.put(`/api/v1/standard-fields/${fieldId}`, data);
+  return response.data;
+}
+
+// [2026-04-20] 표준 필드 삭제
+export async function deleteStandardField(fieldId: string): Promise<void> {
+  await api.delete(`/api/v1/standard-fields/${fieldId}`);
 }
 
 /**

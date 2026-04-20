@@ -41,6 +41,9 @@ public class LocalIdGenerator implements IdGenerator {
     private static final int NODE_ID_STANDARD_FIELD = 1000;
     // TSID node id must be in [0, 1023]
     private static final int NODE_ID_REFRESH_TOKEN = 1001;
+    // [2026-04-20] 파서 Node ID
+    private static final int NODE_ID_PARSER = 1010;
+    private static final int NODE_ID_PARSER_RULE = 1011;
 
 
     @Override
@@ -58,6 +61,9 @@ public class LocalIdGenerator implements IdGenerator {
             case STANDARD_FIELD -> TsidGenerator.generate(NODE_ID_STANDARD_FIELD);
             case RULE_HISTORY -> TsidGenerator.generate(NODE_ID_RULE_HISTORY);
             case REFRESH_TOKEN -> TsidGenerator.generate(NODE_ID_REFRESH_TOKEN);
+            // [2026-04-20] 파서 ID 생성
+            case PARSER -> TsidGenerator.generate(NODE_ID_PARSER);
+            case PARSER_RULE -> TsidGenerator.generate(NODE_ID_PARSER_RULE);
         };
     }
 }

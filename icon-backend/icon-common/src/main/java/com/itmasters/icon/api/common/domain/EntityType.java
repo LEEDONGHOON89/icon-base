@@ -17,6 +17,9 @@ public enum EntityType {
     STANDARD_FIELD("StandardField"),
     RULE_HISTORY("RuleHistory"),
     REFRESH_TOKEN("RefreshToken"),
+    // [2026-04-20] 파서 기능 추가
+    PARSER("Parser"),
+    PARSER_RULE("ParserRule"),
     ;
 
     private final String displayName;

@@ -4,7 +4,6 @@ import com.itmasters.icon.entity.Auditable;
 import com.itmasters.icon.common.domain.type.FieldDataType;
 import com.itmasters.icon.common.domain.rule.FieldCategory;
 import jakarta.persistence.*;
-import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -12,11 +11,12 @@ import lombok.Setter;
 /**
  * 표준 필드 엔티티
  */
+// [2026-04-20] 매퍼에서 직접 인스턴스 생성을 위해 생성자 접근자를 public으로 변경
 @Entity
 @Table(name = "standard_fields")
 @Getter
 @Setter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@NoArgsConstructor
 public class StandardFieldEntity extends Auditable {
     
     @Id

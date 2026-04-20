@@ -291,6 +291,9 @@ export interface DataSourceOriginalSchema {
   standardFieldId?: string;   // 표준 필드 매핑
   standardFieldName?: string; // 표준 필드명 (조회시)
   transformRule?: string;     // 변환 규칙
+  // [2026-04-20] 파서 연동
+  parserId?: string | null;   // 적용할 파서 ID
+  parserName?: string | null; // 파서명 (조회시)
   createdAt?: string;
   updatedAt?: string;
 }
@@ -312,6 +315,8 @@ export interface StandardFieldMappingRequest {
   standardFieldId?: string;
   transformRule?: string;
   isActive?: boolean;
+  // [2026-04-20] 파서 연동
+  parserId?: string | null;
 }
 
 export const updateOriginalSchemaStandardFieldMapping = async (

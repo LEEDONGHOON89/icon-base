@@ -48,6 +48,11 @@ public class EngineDataSourceSchemaEntity {
     @Column(name = "standard_field_id", insertable = false, updatable = false)
     private String standardFieldId;
     
+    // [2026-04-20] 파서 연동 - 원본 필드에 적용할 파서 (선택사항)
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "parser_id")
+    private EngineParserEntity parser;
+
     // transform_rule 컬럼 제거에 따라 필드 삭제
     
     /**

@@ -1,10 +1,13 @@
 package com.itmasters.icon.engine.mapping;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.itmasters.icon.common.constants.EngineConstants;
 import com.itmasters.icon.common.domain.type.GroupKeyType;
 import com.itmasters.icon.engine.adapter.out.persistence.repository.EngineDataSourceSchemaRepository;
 import com.itmasters.icon.engine.adapter.out.persistence.repository.EngineProfileRepository;
 import com.itmasters.icon.engine.adapter.out.persistence.entity.EngineDataSourceSchemaEntity;
+import com.itmasters.icon.engine.adapter.out.persistence.entity.EngineParserRuleEntity;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -30,6 +33,8 @@ public class ProfileSchemaMappingEngine implements FieldMappingEngine {
     // group_key 정보 캐시
     private final Map<String, GroupKeyInfo> groupKeyCache = new ConcurrentHashMap<>();
 
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     @Override
     public List<Map<String, Object>> mapByDataSource(List<Map<String, Object>> sourceRows, String dataSourceId) {
         log.info("DataSourceSchema 기반 필드 매핑 시작 - dataSourceId: {}, rows: {}",
@@ -52,6 +57,13 @@ public class ProfileSchemaMappingEngine implements FieldMappingEngine {
             }
         }
 
+        // [2026-04-20] is_active=false 필드명 목록: 스키마에 등록은 됐지만 비활성인 필드
+        // → else 분기에서 "완전히 미지의 필드"와 구분하기 위해 사용
+        Set<String> inactiveFieldNames = schemas.stream()
+                .filter(s -> !Boolean.TRUE.equals(s.getIsActive()))
+                .map(EngineDataSourceSchemaEntity::getFieldName)
+                .collect(Collectors.toSet());
+
         // 각 row에 대해 매핑 수행
         List<Map<String, Object>> mappedRows = new ArrayList<>();
         for (Map<String, Object> sourceRow : sourceRows) {
@@ -67,27 +79,34 @@ public class ProfileSchemaMappingEngine implements FieldMappingEngine {
                     continue;
                 }
 
+                // [2026-04-20] is_active=false로 명시적 비활성 처리된 필드는 제외
+                if (inactiveFieldNames.contains(fieldName)) {
+                    log.debug("비활성 필드 제외: {}", fieldName);
+                    continue;
+                }
+
                 // DataSourceSchema 확인 (다중 매핑)
                 List<EngineDataSourceSchemaEntity> mappingList = schemaMap.get(fieldName);
                 if (mappingList != null && !mappingList.isEmpty()) {
                     for (EngineDataSourceSchemaEntity mapping : mappingList) {
-                        // 표준 필드 매핑이 있으면 표준 필드명으로, 없으면 원본 필드명 사용
-                        String targetFieldName = mapping.getTargetFieldName();
-
                         // 타입 검증 (원본 값 기준 간단 검증)
                         if (!mapping.isValidType(value)) {
                             log.warn("필드 타입 불일치 - field: {}, expected: {}, actual: {}",
                                     fieldName, mapping.getDataType(), value != null ? value.getClass().getSimpleName() : "null");
                         }
 
-                        // 변환 규칙 사용 중단: 원값 그대로 사용
-                        mappedRow.put(targetFieldName, value);
-
-                        log.debug("필드 매핑 적용: {} -> {} (값: {})",
-                                fieldName, targetFieldName, value);
+                        // [2026-04-20] 파서가 연동된 경우: 파서 규칙으로 1→N 추출 후 원본 필드 제거
+                        if (mapping.getParser() != null && mapping.getParser().isActive()) {
+                            applyParser(mapping.getParser().getRules(), value, mappedRow, fieldName);
+                        } else {
+                            // 파서 없음: 표준 필드 매핑이 있으면 표준 필드명으로, 없으면 원본 필드명 사용
+                            String targetFieldName = mapping.getTargetFieldName();
+                            mappedRow.put(targetFieldName, value);
+                            log.debug("필드 매핑 적용: {} -> {} (값: {})", fieldName, targetFieldName, value);
+                        }
                     }
                 } else {
-                    // 스키마에 없는 필드는 그대로 유지
+                    // 스키마에 등록되지 않은 완전히 미지의 필드는 그대로 유지
                     mappedRow.put(fieldName, value);
                     log.trace("스키마 정보 없음, 원본 유지: {}", fieldName);
                 }
@@ -102,6 +121,66 @@ public class ProfileSchemaMappingEngine implements FieldMappingEngine {
 
     // Note: any derived value handling should be expressed via data_source_schemas.transform_rule
     // and applied in applyTransformRule(), rather than hardcoding here.
+
+    // [2026-04-20] 파서 규칙 적용: 원본 값 하나를 N개 추출 결과로 분리하여 mappedRow에 직접 주입
+    private void applyParser(List<EngineParserRuleEntity> rules, Object rawValue,
+                              Map<String, Object> mappedRow, String sourceFieldName) {
+        if (rawValue == null) return;
+        String text = String.valueOf(rawValue);
+
+        for (EngineParserRuleEntity rule : rules) {
+            String targetKey = resolveParserTargetKey(rule, sourceFieldName);
+            try {
+                Map<String, Object> cfg = OBJECT_MAPPER.readValue(
+                        rule.getConfigJson(), new TypeReference<Map<String, Object>>() {});
+                String extracted = extractByConfig(text, cfg, rule);
+                mappedRow.put(targetKey, extracted);
+                log.debug("파서 추출: {} -> {} = {}", sourceFieldName, targetKey, extracted);
+            } catch (Exception e) {
+                log.warn("파서 규칙 적용 실패 - ruleId: {}, field: {}: {}", rule.getParserRuleId(), sourceFieldName, e.getMessage());
+            }
+        }
+    }
+
+    private String resolveParserTargetKey(EngineParserRuleEntity rule, String sourceFieldName) {
+        if (rule.getTargetStandardFieldId() != null && !rule.getTargetStandardFieldId().isBlank()) {
+            return rule.getTargetStandardFieldId();
+        }
+        if (rule.getTargetFieldName() != null && !rule.getTargetFieldName().isBlank()) {
+            return rule.getTargetFieldName();
+        }
+        return sourceFieldName + "_" + rule.getRuleOrder();
+    }
+
+    private String extractByConfig(String text, Map<String, Object> cfg, EngineParserRuleEntity rule) {
+        // DELIMITER: {"delimiter":"|","index":0}
+        if (cfg.containsKey("delimiter")) {
+            String delimiter = String.valueOf(cfg.get("delimiter"));
+            int index = cfg.containsKey("index") ? ((Number) cfg.get("index")).intValue() : 0;
+            String[] parts = text.split(java.util.regex.Pattern.quote(delimiter), -1);
+            return (index >= 0 && index < parts.length) ? parts[index] : "";
+        }
+        // FIXED_WIDTH: {"startByte":0,"byteLength":6}
+        if (cfg.containsKey("startByte")) {
+            int start = ((Number) cfg.get("startByte")).intValue();
+            int length = cfg.containsKey("byteLength") ? ((Number) cfg.get("byteLength")).intValue() : text.length();
+            byte[] bytes = text.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            int end = Math.min(start + length, bytes.length);
+            if (start >= bytes.length) return "";
+            return new String(bytes, start, end - start, java.nio.charset.StandardCharsets.UTF_8);
+        }
+        // REGEX: {"pattern":"^(\\w+)","group":1}
+        if (cfg.containsKey("pattern")) {
+            String pattern = String.valueOf(cfg.get("pattern"));
+            int group = cfg.containsKey("group") ? ((Number) cfg.get("group")).intValue() : 0;
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile(pattern).matcher(text);
+            if (m.find()) {
+                return group <= m.groupCount() ? m.group(group) : m.group(0);
+            }
+            return "";
+        }
+        return text;
+    }
 
     /**
      * 변환 규칙 적용

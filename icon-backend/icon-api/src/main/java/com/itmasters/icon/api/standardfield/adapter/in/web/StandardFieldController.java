@@ -7,6 +7,7 @@ import com.itmasters.icon.common.domain.rule.FieldCategory;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -50,5 +51,28 @@ public class StandardFieldController {
     public ResponseList<StandardFieldDto.Response> getStandardFieldsByDataType(@PathVariable String dataType) {
         List<StandardFieldDto.Response> fields = standardFieldService.getStandardFieldsByDataType(dataType);
         return new ResponseList<>(fields);
+    }
+
+    // [2026-04-20] 표준 필드 생성/수정/삭제 엔드포인트 추가
+    @PostMapping("/api/v1/standard-fields")
+    @ResponseStatus(HttpStatus.CREATED)
+    @Operation(summary = "표준 필드 생성", description = "새 표준 필드를 생성합니다")
+    public StandardFieldDto.Response createStandardField(@RequestBody StandardFieldDto.Create request) {
+        return standardFieldService.createStandardField(request);
+    }
+
+    @PutMapping("/api/v1/standard-fields/{fieldId}")
+    @Operation(summary = "표준 필드 수정", description = "표준 필드를 수정합니다")
+    public StandardFieldDto.Response updateStandardField(
+            @PathVariable String fieldId,
+            @RequestBody StandardFieldDto.Update request) {
+        return standardFieldService.updateStandardField(fieldId, request);
+    }
+
+    @DeleteMapping("/api/v1/standard-fields/{fieldId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "표준 필드 삭제", description = "표준 필드를 삭제합니다")
+    public void deleteStandardField(@PathVariable String fieldId) {
+        standardFieldService.deleteStandardField(fieldId);
     }
 }

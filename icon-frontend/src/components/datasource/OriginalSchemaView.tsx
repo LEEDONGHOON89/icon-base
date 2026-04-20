@@ -7,6 +7,9 @@ import {
   fetchStandardFields,
   StandardFieldMappingRequest,
 } from "@/app/data-sources/api";
+// [2026-04-20] 파서 관리 API
+import { fetchActiveParsers } from "@/app/parsers/api";
+import type { ParserSummary } from "@/app/parsers/api";
 import LoadingButton from "@/components/common/LoadingButton";
 import Autocomplete from "@/components/common/Autocomplete";
 import { useErrorHandling } from "@/hooks/useErrorHandling";
@@ -51,7 +54,9 @@ function SortableRow({
   handleFieldChange,
   handleRemoveField,
   handleStandardFieldMappingChange,
+  handleParserChange,
   standardFields,
+  parsers,
   index,
 }: any) {
   const {
@@ -224,6 +229,24 @@ function SortableRow({
         </div>
       </td>
 
+      {/* [2026-04-20] 파서 선택 */}
+      <td className="px-4 py-4 w-44">
+        <select
+          value={currentEditData.parserId || ""}
+          onChange={(e) =>
+            handleParserChange(schema.schemaId, e.target.value || null)
+          }
+          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500"
+        >
+          <option value="">파서 없음</option>
+          {(parsers as ParserSummary[]).map((p) => (
+            <option key={p.parserId} value={p.parserId}>
+              {p.parserName}
+            </option>
+          ))}
+        </select>
+      </td>
+
       {/* Required */}
       <td className="px-4 py-4 whitespace-nowrap text-center">
         {true ? (
@@ -338,6 +361,12 @@ export default function OriginalSchemaView({
     queryFn: fetchStandardFields,
   });
 
+  // [2026-04-20] 활성 파서 목록 조회
+  const { data: activeParsers = [] } = useQueryWithErrorHandling({
+    queryKey: ["activeParsers"],
+    queryFn: fetchActiveParsers,
+  });
+
   // 스키마 데이터가 변경되면 편집 가능한 스키마 업데이트
   useEffect(() => {
     setEditableSchemas(schemas);
@@ -415,6 +444,17 @@ export default function OriginalSchemaView({
       const newEditingSchemas = { ...prev };
       delete newEditingSchemas[schemaId];
       return newEditingSchemas;
+    });
+  };
+
+  // [2026-04-20] 파서 선택 변경 핸들러
+  const handleParserChange = (schemaId: string, parserId: string | null) => {
+    setEditableSchemas((prev) =>
+      prev.map((s) => s.schemaId === schemaId ? { ...s, parserId } : s)
+    );
+    setEditingSchemas((prev) => {
+      const current = editableSchemas.find((s) => s.schemaId === schemaId);
+      return { ...prev, [schemaId]: { ...(prev[schemaId] || current || {}), parserId } };
     });
   };
 
@@ -662,12 +702,14 @@ export default function OriginalSchemaView({
       const originalSchema = schemas.find(s => s.schemaId === schema.schemaId);
       const editData = editingSchemas[schema.schemaId];
       
-      // 표준 필드 매핑이나 변환 규칙이 변경되었는지 확인
+      // 표준 필드 매핑, 변환 규칙, 파서 변경 여부 확인
       const hasStandardFieldChange = editData && (
-        editData.standardFieldId !== undefined || 
-        editData.transformRule !== undefined
+        editData.standardFieldId !== undefined ||
+        editData.transformRule !== undefined ||
+        // [2026-04-20] 파서 변경 포함
+        editData.parserId !== undefined
       );
-      
+
       if (hasStandardFieldChange) {
         mappingChanges.push({
           schemaId: schema.schemaId,
@@ -675,6 +717,8 @@ export default function OriginalSchemaView({
             standardFieldId: editData.standardFieldId,
             transformRule: editData.transformRule,
             isActive: editData.isActive !== undefined ? editData.isActive : true,
+            // [2026-04-20] 파서 연동
+            parserId: editData.parserId,
           }
         });
       }
@@ -835,6 +879,9 @@ export default function OriginalSchemaView({
                     매핑된 표준 필드
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    파서
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     필수
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -859,13 +906,15 @@ export default function OriginalSchemaView({
                       handleFieldChange={handleFieldChange}
                       handleRemoveField={handleRemoveField}
                       handleStandardFieldMappingChange={handleStandardFieldMappingChange}
+                      handleParserChange={handleParserChange}
                       standardFields={standardFields}
+                      parsers={activeParsers}
                     />
                   ))}
                 </SortableContext>
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     className="px-6 py-4 text-center border-t border-gray-200"
                   >
                     <button
