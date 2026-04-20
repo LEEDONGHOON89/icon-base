@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 // [2026-04-20] 룰 엔진용 파서 엔티티 (parsers 테이블 읽기 전용)
+// [2026-04-20] 재설계: sourceField, configJson(파서레벨) 추가
 @Entity
 @Table(name = "parsers")
 @Getter
@@ -26,6 +27,19 @@ public class EngineParserEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "parser_type", nullable = false, length = 50)
     private ParserType parserType;
+
+    /** 파싱 대상 원본 필드명 (예: "line") */
+    @Column(name = "source_field", length = 100)
+    private String sourceField;
+
+    /**
+     * 파서 공통 설정 JSON
+     * DELIMITER  : {"delimiter":"|"}
+     * FIXED_WIDTH: null
+     * REGEX      : null
+     */
+    @Column(name = "config_json", columnDefinition = "jsonb")
+    private String configJson;
 
     @Column(name = "is_active", nullable = false)
     private boolean isActive;

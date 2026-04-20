@@ -160,9 +160,6 @@ public class DataSourceOriginalSchemaDto {
             @Schema(description = "표준 필드 ID", example = "sf123")
             private String standardFieldId;
 
-            // [2026-04-20] 파서 연동 - 원본 필드에 적용할 파서 ID (선택사항)
-            @Schema(description = "파서 ID (선택사항)", example = "PRS0000001")
-            private String parserId;
         }
     }
 
@@ -212,14 +209,6 @@ public class DataSourceOriginalSchemaDto {
         
         @Schema(description = "표준 필드명", example = "userId")
         private String standardFieldName;
-
-        // [2026-04-20] 파서 연동
-        @Schema(description = "파서 ID")
-        private String parserId;
-
-        @Schema(description = "파서명")
-        private String parserName;
-
     }
 
     /**
@@ -280,9 +269,5 @@ public class DataSourceOriginalSchemaDto {
 
         @Schema(description = "활성화 여부", example = "true")
         private Boolean isActive;
-
-        // [2026-04-20] 파서 연동 — null이면 파서 해제
-        @Schema(description = "파서 ID (null이면 파서 해제)")
-        private String parserId;
     }
 }

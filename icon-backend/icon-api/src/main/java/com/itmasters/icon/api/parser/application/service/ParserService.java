@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 // [2026-04-20] 파서 CRUD 서비스
+// [2026-04-20] 재설계: sourceField/configJson 파서레벨 추가
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -48,17 +49,19 @@ public class ParserService {
                 .parserId(idGenerator.generateId(EntityType.PARSER))
                 .parserName(request.getParserName())
                 .parserType(request.getParserType())
+                .sourceField(request.getSourceField())
+                .configJson(request.getConfigJson())
                 .description(request.getDescription())
                 .isActive(true)
                 .build();
 
         if (request.getRules() != null) {
-            List<ParserRuleEntity> rules = buildRules(request.getRules(), entity);
-            entity.setRules(rules);
+            entity.setRules(buildRules(request.getRules(), entity));
         }
 
         ParserEntity saved = parserRepository.save(entity);
-        log.info("파서 생성 완료 - parserId: {}, name: {}", saved.getParserId(), saved.getParserName());
+        log.info("파서 생성 완료 - parserId: {}, name: {}, sourceField: {}",
+                saved.getParserId(), saved.getParserName(), saved.getSourceField());
         return toResponse(saved);
     }
 
@@ -68,14 +71,15 @@ public class ParserService {
                 .orElseThrow(() -> new IllegalArgumentException("파서를 찾을 수 없습니다: " + parserId));
 
         if (request.getParserName() != null) entity.setParserName(request.getParserName());
+        if (request.getSourceField() != null) entity.setSourceField(request.getSourceField());
+        if (request.getConfigJson() != null)  entity.setConfigJson(request.getConfigJson());
         if (request.getDescription() != null) entity.setDescription(request.getDescription());
-        if (request.getIsActive() != null) entity.setActive(request.getIsActive());
+        if (request.getIsActive() != null)    entity.setActive(request.getIsActive());
 
         // 규칙 전체 교체
         if (request.getRules() != null) {
             entity.getRules().clear();
-            List<ParserRuleEntity> newRules = buildRules(request.getRules(), entity);
-            entity.getRules().addAll(newRules);
+            entity.getRules().addAll(buildRules(request.getRules(), entity));
         }
 
         ParserEntity saved = parserRepository.save(entity);
@@ -92,13 +96,16 @@ public class ParserService {
         log.info("파서 삭제 완료 - parserId: {}", parserId);
     }
 
+    // ─── 내부 헬퍼 ──────────────────────────────────────────────────────────
+
     private List<ParserRuleEntity> buildRules(List<ParserDto.RuleItem> items, ParserEntity parser) {
         List<ParserRuleEntity> rules = new ArrayList<>();
-        for (ParserDto.RuleItem item : items) {
+        for (int i = 0; i < items.size(); i++) {
+            ParserDto.RuleItem item = items.get(i);
             rules.add(ParserRuleEntity.builder()
                     .parserRuleId(idGenerator.generateId(EntityType.PARSER_RULE))
                     .parser(parser)
-                    .ruleOrder(item.getRuleOrder())
+                    .ruleOrder(i)  // 항상 인덱스 순서로 저장
                     .configJson(item.getConfigJson())
                     .targetStandardFieldId(item.getTargetStandardFieldId())
                     .targetFieldName(item.getTargetFieldName())
@@ -107,11 +114,12 @@ public class ParserService {
         return rules;
     }
 
-    private ParserDto.SummaryResponse toSummary(ParserEntity e) {
+    ParserDto.SummaryResponse toSummary(ParserEntity e) {
         return ParserDto.SummaryResponse.builder()
                 .parserId(e.getParserId())
                 .parserName(e.getParserName())
                 .parserType(e.getParserType())
+                .sourceField(e.getSourceField())
                 .description(e.getDescription())
                 .isActive(e.isActive())
                 .ruleCount(e.getRules() != null ? e.getRules().size() : 0)
@@ -132,6 +140,8 @@ public class ParserService {
                 .parserId(e.getParserId())
                 .parserName(e.getParserName())
                 .parserType(e.getParserType())
+                .sourceField(e.getSourceField())
+                .configJson(e.getConfigJson())
                 .description(e.getDescription())
                 .isActive(e.isActive())
                 .rules(ruleResponses)

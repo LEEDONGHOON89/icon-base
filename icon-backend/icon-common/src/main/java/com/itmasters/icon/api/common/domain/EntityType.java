@@ -20,6 +20,8 @@ public enum EntityType {
     // [2026-04-20] 파서 기능 추가
     PARSER("Parser"),
     PARSER_RULE("ParserRule"),
+    // [2026-04-20] 데이터소스-파서 연결
+    DATA_SOURCE_PARSER("DataSourceParser"),
     ;
 
     private final String displayName;

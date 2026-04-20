@@ -28,6 +28,8 @@ import {
 } from "@heroicons/react/24/outline";
 import OriginalSchemaView from "@/components/datasource/OriginalSchemaView";
 import ProfileManagementView from "@/components/profile/ProfileManagementView";
+// [2026-04-20] 파서 연결 섹션
+import DataSourceParserSection from "@/components/datasource/DataSourceParserSection";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
 import { useErrorHandling } from "@/hooks/useErrorHandling";
@@ -57,7 +59,7 @@ export default function DataSourceDetailPage() {
     name: "",
     description: "",
   });
-  const [activeTab, setActiveTab] = useState<"overview" | "config" | "originalSchema" | "profileSchema">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "config" | "originalSchema" | "profileSchema" | "parsers">("overview");
 
   // 데이터 소스 상세 정보 조회
   const { data: dataSource, isLoading } = useQueryWithErrorHandling({
@@ -355,6 +357,16 @@ export default function DataSourceDetailPage() {
             >
               프로파일 관리
             </button>
+            {/* [2026-04-20] 파서 설정 탭 추가 */}
+            <button
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === "parsers"
+                  ? "border-blue-500 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
+              onClick={() => setActiveTab("parsers")}
+            >
+              파서 설정
+            </button>
           </nav>
         </div>
 
@@ -461,6 +473,11 @@ export default function DataSourceDetailPage() {
               dataSourceId={dataSourceId}
               dataSourceName={dataSource.name}
             />
+          )}
+
+          {/* [2026-04-20] 파서 설정 탭 */}
+          {activeTab === "parsers" && (
+            <DataSourceParserSection dataSourceId={dataSourceId} />
           )}
 
         </div>

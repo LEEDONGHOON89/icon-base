@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 // [2026-04-20] 파서 정의 JPA 엔티티
+// [2026-04-20] 재설계: source_field(파싱 대상 필드명), config_json(파서레벨 공통설정) 추가
 @Entity
 @Table(name = "parsers")
 @Getter
@@ -28,6 +29,19 @@ public class ParserEntity extends Auditable {
     @Enumerated(EnumType.STRING)
     @Column(name = "parser_type", nullable = false, length = 50)
     private ParserType parserType;
+
+    /** 파싱 대상 원본 필드명 (예: "line") */
+    @Column(name = "source_field", length = 100)
+    private String sourceField;
+
+    /**
+     * 파서 공통 설정 JSON
+     * DELIMITER  : {"delimiter":"|"}
+     * FIXED_WIDTH: null (규칙별 byteLength 사용)
+     * REGEX      : null (규칙별 pattern/group 사용)
+     */
+    @Column(name = "config_json", columnDefinition = "jsonb")
+    private String configJson;
 
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
