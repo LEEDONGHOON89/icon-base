@@ -94,6 +94,54 @@ dto/                     → 요청/응답 DTO
 
 ---
 
+## DB 버전 관리 규칙
+
+### 버전 체계
+
+| 구분 | 버전 | 파일 | 설명 |
+|---|---|---|---|
+| 기준선 (baseline) | **1.0.0** | `db/init.sql` | 전체 스키마 초기화 — 신규 DB 생성 시 자동 적용 |
+| 증분 변경 | **1.x.x** | `db/migrations/V1_0_1__desc.sql` | 기존 DB에 증분 적용 |
+
+### 파일 명명 규칙
+
+```
+db/migrations/V{major}_{minor}_{patch}__{설명}.sql
+
+예시:
+  V1_0_1__add_user_role_column.sql
+  V1_0_2__create_notification_table.sql
+  V1_1_0__add_detection_context_table.sql
+```
+
+- 버전 자리수: major(1자리 이상).minor(0~9).patch(0~9)
+- 점(`.`) → 언더스코어(`_`)로 표기 (파일명에 점 사용 금지)
+- 설명은 영문 소문자 + 언더스코어
+- `icon_migrations` 테이블에 `1.0.1`, `1.0.2` 형태로 기록됨
+
+### 동작 방식
+
+```
+./icon.sh start
+  ├─ DB 없음 → db/init.sql 적용 (v1.0.0) → icon_migrations에 1.0.0 기록
+  └─ DB 있음 → db/migrations/V*.sql 순서 적용 (미적용 버전만)
+```
+
+### DB 변경 작업 절차
+
+1. `db/migrations/V1_0_x__설명.sql` 파일 작성
+2. `docs/architecture/db-tables.md` 업데이트
+3. `./deploy.sh backend vm` 으로 배포 (마이그레이션 파일 자동 전송)
+4. VM에서 `./icon.sh start` — 자동으로 미적용 마이그레이션만 실행
+
+### 주의사항
+
+- `db/init.sql`은 직접 수정하지 않는다 — 새 테이블은 반드시 마이그레이션 파일로 추가
+- 한 번 배포된 마이그레이션 파일의 내용을 수정하지 않는다 (체크섬 불일치 → 재적용 불가)
+- 마이그레이션 파일은 반드시 `IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` 등 멱등성 보장
+
+---
+
 ## 코드 주석 규칙
 
 코드를 수정하거나 추가할 때는 반드시 변경 내용에 주석을 달아야 한다.

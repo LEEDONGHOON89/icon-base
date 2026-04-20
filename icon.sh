@@ -196,6 +196,10 @@ check_deps() {
 # ─────────────────────────────────────────────────────────────
 # 2. DB 생성 및 초기화
 # ─────────────────────────────────────────────────────────────
+
+# [2026-04-17] init.sql 경로: 소스 없는 서버는 BASE_DIR/db/init.sql 사용
+INIT_SQL="${BASE_DIR}/db/init.sql"
+
 setup_database() {
     section "DB 초기화"
 
@@ -207,8 +211,10 @@ setup_database() {
         sudo -u postgres psql -c "CREATE DATABASE $DB_NAME ENCODING 'UTF8' LC_COLLATE 'en_US.UTF-8' LC_CTYPE 'en_US.UTF-8' TEMPLATE template0;" 2>/dev/null || \
         sudo -u postgres psql -c "CREATE DATABASE $DB_NAME;"
         info "DB '$DB_NAME' 생성 완료"
+        DB_IS_NEW=true
     else
         info "DB '$DB_NAME' 이미 존재함"
+        DB_IS_NEW=false
     fi
 
     # postgres 사용자 비밀번호 설정
@@ -228,17 +234,62 @@ setup_database() {
             done
         fi
     fi
+
+    # [2026-04-17] DB 신규 생성 시 init.sql로 전체 스키마 한 번에 초기화
+    if [ "$DB_IS_NEW" = true ]; then
+        run_init_sql
+    fi
+}
+
+# [2026-04-17] 통합 init.sql 적용 (DB 버전 1.0.0 기준선)
+run_init_sql() {
+    local psql_cmd="psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME"
+
+    if [ ! -f "$INIT_SQL" ]; then
+        warn "init.sql 없음: $INIT_SQL (건너뜀 — 마이그레이션으로 대체됨)"
+        return
+    fi
+
+    info "DB 스키마 초기화 중 (v1.0.0): $INIT_SQL"
+    if $psql_cmd --set=ON_ERROR_STOP=on -f "$INIT_SQL" &>/dev/null; then
+        local tbl_count
+        tbl_count=$(grep -c 'CREATE TABLE IF NOT EXISTS' "$INIT_SQL")
+        info "DB 스키마 초기화 완료 — ${tbl_count}개 테이블 (v1.0.0)"
+
+        # [2026-04-17] init.sql 적용 후 v1.0.0을 icon_migrations에 기록
+        # → 이후 run_migrations()가 동일 버전을 재적용하지 않도록 방지
+        local init_checksum
+        init_checksum=$(md5sum "$INIT_SQL" | awk '{print $1}')
+        $psql_cmd -c "
+            CREATE TABLE IF NOT EXISTS icon_migrations (
+                id          SERIAL       PRIMARY KEY,
+                version     VARCHAR(50)  NOT NULL UNIQUE,
+                filename    VARCHAR(255) NOT NULL,
+                applied_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                checksum    VARCHAR(64)
+            );
+            INSERT INTO icon_migrations (version, filename, checksum)
+            VALUES ('1.0.0', 'init.sql', '$init_checksum')
+            ON CONFLICT (version) DO NOTHING;
+        " &>/dev/null || true
+    else
+        warn "init.sql 일부 오류 발생 — 상세 내용:"
+        $psql_cmd -f "$INIT_SQL" 2>&1 | grep -i "error" | head -10 || true
+        error "DB 초기화 실패. 수동으로 확인하세요: $INIT_SQL"
+        exit 1
+    fi
 }
 
 # ─────────────────────────────────────────────────────────────
-# 3. DB 마이그레이션
+# 3. DB 마이그레이션 (v1.0.1 이상 증분 변경 적용)
+# 파일명 형식: V1_0_1__description.sql (버전 점 → 언더스코어)
 # ─────────────────────────────────────────────────────────────
 run_migrations() {
     section "DB 마이그레이션"
 
     local psql_cmd="psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME"
 
-    # 마이그레이션 추적 테이블 생성
+    # 마이그레이션 추적 테이블 생성 (없을 경우 — 기존 DB 호환)
     $psql_cmd -c "
         CREATE TABLE IF NOT EXISTS icon_migrations (
             id          SERIAL      PRIMARY KEY,
@@ -250,19 +301,28 @@ run_migrations() {
     " &>/dev/null
 
     if [ ! -d "$MIGRATION_DIR" ]; then
-        warn "마이그레이션 디렉토리 없음: $MIGRATION_DIR (건너뜀)"
+        info "마이그레이션 디렉토리 없음: $MIGRATION_DIR (건너뜀)"
         return
     fi
 
-    # V숫자__xxx.sql 파일을 정렬하여 순서대로 실행
+    local sql_files
+    sql_files=$(ls "$MIGRATION_DIR"/V*.sql 2>/dev/null | sort || true)
+
+    if [ -z "$sql_files" ]; then
+        info "적용할 마이그레이션 파일 없음"
+        return
+    fi
+
+    # V1_0_1__xxx.sql 파일을 정렬하여 순서대로 실행
     local applied=0
     local skipped=0
 
-    for sql_file in $(ls "$MIGRATION_DIR"/V*.sql 2>/dev/null | sort); do
+    for sql_file in $sql_files; do
         local filename
         filename=$(basename "$sql_file")
+        # [2026-04-17] 버전 추출: V1_0_1__desc.sql → 1.0.1 (언더스코어 → 점 변환)
         local version
-        version=$(echo "$filename" | sed -E 's/(V[0-9]+).*/\1/')
+        version=$(echo "$filename" | sed -E 's/^V([0-9]+)_([0-9]+)_([0-9]+)__.*/\1.\2.\3/')
         local checksum
         checksum=$(md5sum "$sql_file" | awk '{print $1}')
 
@@ -277,7 +337,7 @@ run_migrations() {
         fi
 
         info "  APPLY $filename"
-        if $psql_cmd -f "$sql_file" &>/dev/null; then
+        if $psql_cmd --set=ON_ERROR_STOP=on -f "$sql_file" &>/dev/null; then
             $psql_cmd -c "
                 INSERT INTO icon_migrations (version, filename, checksum)
                 VALUES ('$version', '$filename', '$checksum');
