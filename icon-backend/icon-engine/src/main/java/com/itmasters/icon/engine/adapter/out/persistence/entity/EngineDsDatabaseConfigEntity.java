@@ -59,6 +59,10 @@ public class EngineDsDatabaseConfigEntity {
     @Column(name = "incremental_column_type", length = 50)
     private String incrementalColumnType;
 
+    // [2026-04-21] 증분 컬럼 초기값 — 첫 수집 시 lastProcessedValue 가 null 인 경우 사용
+    @Column(name = "incremental_column_initial_value", length = 200)
+    private String incrementalColumnInitialValue;
+
     @Column(name = "batch_size")
     private Integer batchSize;
 

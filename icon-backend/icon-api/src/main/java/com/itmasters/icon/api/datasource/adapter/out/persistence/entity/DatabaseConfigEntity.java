@@ -70,6 +70,10 @@ public class DatabaseConfigEntity extends Auditable {
     @Column(name = "incremental_column_type", length = 50)
     private String incrementalColumnType; // e.g., NUMBER, DATETIME
 
+    // [2026-04-21] 증분 컬럼 초기값 — 첫 수집 시 lastProcessedValue 가 null 인 경우 사용
+    @Column(name = "incremental_column_initial_value", length = 200)
+    private String incrementalColumnInitialValue;
+
     @Column(name = "batch_size")
     private Integer batchSize;
 
@@ -105,6 +109,9 @@ public class DatabaseConfigEntity extends Auditable {
         this.agentId = agentId;
     }
 
+    // [2026-04-21] passwordEncrypted: null/blank 입력 시 기존 값 유지
+    //              API 응답에 비밀번호가 포함되지 않으므로, 화면에서 재입력하지 않으면
+    //              password 필드가 비어 있는 상태로 저장 요청이 오는 경우 기존 값을 보존해야 한다.
     public void applyBasic(String connectionName,
                            String databaseType,
                            String host,
@@ -124,20 +131,26 @@ public class DatabaseConfigEntity extends Auditable {
         this.databaseName = databaseName;
         this.schemaName = schemaName;
         this.username = username;
-        this.passwordEncrypted = passwordEncrypted;
+        // [2026-04-21] 비밀번호는 새 값이 입력된 경우에만 갱신 (미입력 시 기존 값 유지)
+        if (passwordEncrypted != null && !passwordEncrypted.isBlank()) {
+            this.passwordEncrypted = passwordEncrypted;
+        }
         this.minPoolSize = minPoolSize;
         this.maxPoolSize = maxPoolSize;
         this.connectionTimeoutSeconds = connectionTimeoutSeconds;
         this.idleTimeoutSeconds = idleTimeoutSeconds;
     }
 
+    // [2026-04-21] incrementalColumnInitialValue 파라미터 추가
     public void applyIngestion(String mainQuery,
                                String incrementalColumn,
                                String incrementalColumnType,
+                               String incrementalColumnInitialValue,
                                Integer batchSize) {
         this.mainQuery = mainQuery;
         this.incrementalColumn = incrementalColumn;
         this.incrementalColumnType = incrementalColumnType;
+        this.incrementalColumnInitialValue = incrementalColumnInitialValue;
         this.batchSize = batchSize;
     }
 

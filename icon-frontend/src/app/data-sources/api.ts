@@ -73,6 +73,8 @@ export interface DatabaseConfig {
   mainQuery?: string;
   incrementalColumn?: string;
   incrementalColumnType?: string;
+  // [2026-04-21] 증분 컬럼 초기값 — 첫 수집 시 시작 하이워터마크
+  incrementalColumnInitialValue?: string;
   batchSize?: number;
   isActive?: boolean;
   connectionStatus?: string;

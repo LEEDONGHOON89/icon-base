@@ -10,6 +10,10 @@ import org.slf4j.MDC;
 
 import java.nio.charset.StandardCharsets;
 import java.sql.*;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
 
@@ -205,25 +209,51 @@ public class JdbcCollector {
         }
     }
 
+    // [2026-04-21] TIMESTAMP 파싱 시 지원할 포맷 목록 (우선순위 순)
+    private static final List<DateTimeFormatter> TIMESTAMP_FORMATTERS = List.of(
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"),
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"),
+            DateTimeFormatter.ISO_LOCAL_DATE_TIME,       // yyyy-MM-ddTHH:mm:ss
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"),
+            DateTimeFormatter.ofPattern("yyyy-MM-dd")
+    );
+
+    /** 초회 수집 시 TIMESTAMP 타입의 하이워터마크 시작 기준값 (에포크: 1970-01-01 00:00:00) */
+    private static final java.sql.Timestamp EPOCH_TIMESTAMP =
+            java.sql.Timestamp.valueOf("1970-01-01 00:00:00");
+
     /**
-     * trackingColumnType에 따라 PreparedStatement 파라미터를 적절한 타입으로 바인딩한다.
+     * [2026-04-21] trackingColumnType에 따라 PreparedStatement 파라미터를 적절한 타입으로 바인딩한다.
      * - TIMESTAMP : setTimestamp() — PostgreSQL/Oracle timestamp 컬럼 타입 오류 방지
-     * - NUMBER    : setLong()     — 숫자형 시퀀스/ID 컬럼
-     * - STRING    : setString()   — 기본값 (MySQL varchar 등)
+     *               null(초회 수집) 시 SQL NULL 대신 에포크(1970-01-01) sentinel 값 사용
+     *               → WHERE col > NULL 은 항상 0건; sentinel 사용 시 전체 레코드 수집 가능
+     * - NUMBER    : setLong()     — 숫자형 시퀀스/ID 컬럼 (null 시 0L sentinel)
+     * - STRING    : setString()   — 기본값 (null 시 빈 문자열 sentinel)
      */
     private void bindParameter(PreparedStatement ps, int idx, String value, String type)
             throws java.sql.SQLException {
         switch (type) {
             case "TIMESTAMP":
-                try {
-                    ps.setTimestamp(idx, java.sql.Timestamp.valueOf(value));
-                } catch (IllegalArgumentException e) {
-                    // 파싱 실패 시 문자열 그대로 바인딩 (하위 호환)
-                    log.warn("[{}] TIMESTAMP 파싱 실패, 문자열로 바인딩: {}", targetId, value);
-                    ps.setString(idx, value);
+                if (value == null) {
+                    // [2026-04-21] null = 초회 수집 → 에포크 sentinel로 전체 레코드 수집
+                    ps.setTimestamp(idx, EPOCH_TIMESTAMP);
+                    break;
+                }
+                // [2026-04-21] 다양한 날짜 포맷 순서대로 시도; 모두 실패 시 에포크로 fallback
+                java.sql.Timestamp ts = parseTimestamp(value);
+                if (ts != null) {
+                    ps.setTimestamp(idx, ts);
+                } else {
+                    log.warn("[{}] TIMESTAMP 파싱 실패 — 에포크로 fallback: value='{}'", targetId, value);
+                    ps.setTimestamp(idx, EPOCH_TIMESTAMP);
                 }
                 break;
             case "NUMBER":
+                if (value == null) {
+                    // [2026-04-21] null = 초회 수집 → 0 sentinel으로 전체 레코드 수집
+                    ps.setLong(idx, 0L);
+                    break;
+                }
                 try {
                     ps.setLong(idx, Long.parseLong(value));
                 } catch (NumberFormatException e) {
@@ -232,9 +262,31 @@ public class JdbcCollector {
                 }
                 break;
             default: // STRING
-                ps.setString(idx, value);
+                // [2026-04-21] null = 초회 수집 → 빈 문자열 sentinel
+                ps.setString(idx, value != null ? value : "");
                 break;
         }
+    }
+
+    /**
+     * [2026-04-21] 여러 날짜 포맷을 순서대로 시도하여 Timestamp 변환.
+     * 변환 가능한 포맷이 없으면 null 반환.
+     */
+    private java.sql.Timestamp parseTimestamp(String value) {
+        try {
+            return java.sql.Timestamp.valueOf(value);
+        } catch (IllegalArgumentException ignored) {
+            // fall through
+        }
+        for (DateTimeFormatter fmt : TIMESTAMP_FORMATTERS) {
+            try {
+                LocalDateTime ldt = LocalDateTime.parse(value, fmt);
+                return java.sql.Timestamp.valueOf(ldt);
+            } catch (DateTimeParseException ignored) {
+                // try next
+            }
+        }
+        return null;
     }
 
     /**

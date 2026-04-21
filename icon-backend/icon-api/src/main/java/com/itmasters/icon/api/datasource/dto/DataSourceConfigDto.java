@@ -63,6 +63,8 @@ public class DataSourceConfigDto {
         private String mainQuery;
         private String incrementalColumn;
         private String incrementalColumnType;
+        // [2026-04-21] 증분 컬럼 초기값 — 첫 수집 시 시작 하이워터마크
+        private String incrementalColumnInitialValue;
         private Integer batchSize;
         private Boolean isActive;
         private String connectionStatus;

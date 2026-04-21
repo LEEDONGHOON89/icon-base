@@ -30,6 +30,7 @@ export default function ConfigForm({ dataSource }: Props) {
     // [2026-03-12] 에이전트 연결 초기값
     agentId: undefined,
   });
+  // [2026-04-21] incrementalColumnType 기본값 "DATETIME" 명시 — 미설정 시 null로 저장되는 문제 방지
   const [db, setDb] = useState<DatabaseConfig>({
     connectionName: "",
     databaseType: "POSTGRES",
@@ -38,6 +39,7 @@ export default function ConfigForm({ dataSource }: Props) {
     maxPoolSize: 10,
     connectionTimeoutSeconds: 30,
     idleTimeoutSeconds: 300,
+    incrementalColumnType: "DATETIME",
     batchSize: 1000,
   });
 
@@ -90,6 +92,8 @@ export default function ConfigForm({ dataSource }: Props) {
         mainQuery: config.database.mainQuery,
         incrementalColumn: config.database.incrementalColumn,
         incrementalColumnType: config.database.incrementalColumnType,
+        // [2026-04-21] 증분 컬럼 초기값 로드
+        incrementalColumnInitialValue: config.database.incrementalColumnInitialValue,
         batchSize: config.database.batchSize || 1000,
         // [2026-03-13] 에이전트 연결 정보 초기 로드
         agentId: config.database.agentId || undefined,
@@ -463,6 +467,27 @@ export default function ConfigForm({ dataSource }: Props) {
                   <option value="DATETIME">DATETIME (날짜/시간)</option>
                   <option value="NUMBER">NUMBER (숫자 시퀀스/ID)</option>
                 </select>
+              </div>
+              {/* [2026-04-21] 증분 컬럼 초기값 — 첫 수집 시작점 설정 */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  증분 컬럼 초기값
+                  <span className="ml-2 text-xs font-normal text-gray-400">(선택사항 — 첫 수집 시작 기준값)</span>
+                </label>
+                <input
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  type="text"
+                  value={db.incrementalColumnInitialValue || ""}
+                  onChange={(e) => setDb({ ...db, incrementalColumnInitialValue: e.target.value || undefined })}
+                  placeholder={
+                    (db.incrementalColumnType || "DATETIME") === "NUMBER"
+                      ? "예: 0  (이 값보다 큰 레코드부터 수집)"
+                      : "예: 2024-01-01 00:00:00  (이 시각 이후 레코드부터 수집)"
+                  }
+                />
+                <p className="mt-1 text-xs text-gray-400">
+                  미입력 시 DATETIME은 1970-01-01, NUMBER는 0부터 수집합니다. 이미 수집이 시작된 경우 이 값은 무시됩니다.
+                </p>
               </div>
               <LabeledInput
                 label="배치 크기"

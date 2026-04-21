@@ -133,10 +133,14 @@ public class DataSourceConfigService {
                     in.getConnectionTimeoutSeconds(),
                     in.getIdleTimeoutSeconds()
             );
+            // [2026-04-21] incrementalColumnType: null 입력 시 "DATETIME" 기본값 적용
+            String colType = (in.getIncrementalColumnType() != null && !in.getIncrementalColumnType().isBlank())
+                    ? in.getIncrementalColumnType() : "DATETIME";
             entity.applyIngestion(
                     in.getMainQuery(),
                     in.getIncrementalColumn(),
-                    in.getIncrementalColumnType(),
+                    colType,
+                    in.getIncrementalColumnInitialValue(),
                     in.getBatchSize()
             );
             // [2026-03-13] DATABASE 에이전트 연결 정보 저장
@@ -289,6 +293,8 @@ public class DataSourceConfigService {
                 .mainQuery(e.getMainQuery())
                 .incrementalColumn(e.getIncrementalColumn())
                 .incrementalColumnType(e.getIncrementalColumnType())
+                // [2026-04-21] 초기값 포함
+                .incrementalColumnInitialValue(e.getIncrementalColumnInitialValue())
                 .batchSize(e.getBatchSize())
                 .isActive(e.getIsActive())
                 .connectionStatus(e.getConnectionStatus())
@@ -363,7 +369,9 @@ public class DataSourceConfigService {
         collectorMap.put("query",           db.getMainQuery());
         collectorMap.put("field1",          db.getIncrementalColumn());
         collectorMap.put("field1_type",     resolveIncrementalType(db.getIncrementalColumnType()));
-        collectorMap.put("field1_value",    ""); // 초기값 — 에이전트가 watermark.dat에서 관리
+        // [2026-04-21] 사용자가 설정한 초기값 전달 (미설정 시 빈 문자열 — 에이전트가 watermark.dat에서 관리)
+        String initialValue = db.getIncrementalColumnInitialValue();
+        collectorMap.put("field1_value",    initialValue != null ? initialValue : "");
 
         List<Map<String, Object>> payload = new ArrayList<>();
         payload.add(collectorMap);

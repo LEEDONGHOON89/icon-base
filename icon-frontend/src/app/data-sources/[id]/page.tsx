@@ -357,16 +357,18 @@ export default function DataSourceDetailPage() {
             >
               프로파일 관리
             </button>
-            {/* [2026-04-20] 파서 설정 탭 추가 */}
-            <button
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === "parsers"
-                  ? "border-blue-500 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-                }`}
-              onClick={() => setActiveTab("parsers")}
-            >
-              파서 설정
-            </button>
+            {/* [2026-04-21] DATABASE 타입은 JDBC 직접 수집이므로 파서 설정 탭 미표시 */}
+            {dataSource.sourceType !== "DATABASE" && (
+              <button
+                className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === "parsers"
+                    ? "border-blue-500 text-blue-600"
+                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                  }`}
+                onClick={() => setActiveTab("parsers")}
+              >
+                파서 설정
+              </button>
+            )}
           </nav>
         </div>
 
@@ -475,8 +477,8 @@ export default function DataSourceDetailPage() {
             />
           )}
 
-          {/* [2026-04-20] 파서 설정 탭 */}
-          {activeTab === "parsers" && (
+          {/* [2026-04-21] DATABASE 타입은 파서 설정 탭 미표시 */}
+          {activeTab === "parsers" && dataSource.sourceType !== "DATABASE" && (
             <DataSourceParserSection dataSourceId={dataSourceId} />
           )}
 
