@@ -46,7 +46,6 @@ interface RuleFormItem {
   byteLength: string;       // FIXED_WIDTH 전용
   regexPattern: string;     // REGEX 전용
   regexGroup: string;       // REGEX 전용
-  targetStandardFieldId: string;
   targetFieldName: string;  // 출력 필드명 (필수)
 }
 
@@ -79,7 +78,6 @@ function buildRuleItems(values: ParserFormValues): ParserRuleItem[] {
     return {
       ruleOrder: idx,
       configJson: configJson ?? null,
-      targetStandardFieldId: r.targetStandardFieldId || null,
       targetFieldName: r.targetFieldName,
     };
   });
@@ -91,7 +89,6 @@ function defaultRule(type: ParserType): RuleFormItem {
     byteLength: type === "FIXED_WIDTH" ? "4" : "",
     regexPattern: type === "REGEX" ? "^(\\w+)" : "",
     regexGroup: type === "REGEX" ? "1" : "",
-    targetStandardFieldId: "",
     targetFieldName: "",
   };
 }
@@ -200,7 +197,6 @@ export default function ParsersPage() {
           byteLength,
           regexPattern,
           regexGroup,
-          targetStandardFieldId: r.targetStandardFieldId ?? "",
           targetFieldName: r.targetFieldName ?? "",
         };
       });
@@ -649,16 +645,6 @@ export default function ParsersPage() {
                     )}
                   </div>
 
-                  {/* 표준 필드 ID (선택) */}
-                  <div className="flex-1">
-                    <label className="text-xs text-gray-500 mb-1 block">표준 필드 ID (선택)</label>
-                    <input
-                      {...register(`rules.${idx}.targetStandardFieldId`)}
-                      className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      placeholder="예: login_id"
-                    />
-                  </div>
-
                   {/* 삭제 */}
                   {ruleFields.length > 1 && (
                     <button
@@ -743,11 +729,8 @@ function ParserRulePreview({ parserId }: { parserId: string }) {
               )}
               <span className="text-gray-400">→</span>
               <span className="font-medium text-gray-700">
-                {rule.targetFieldName || rule.targetStandardFieldId || <span className="italic text-gray-400">미지정</span>}
+                {rule.targetFieldName || <span className="italic text-gray-400">미지정</span>}
               </span>
-              {rule.targetStandardFieldId && (
-                <span className="text-gray-400 text-xs">(표준: {rule.targetStandardFieldId})</span>
-              )}
             </div>
           ))}
         </div>

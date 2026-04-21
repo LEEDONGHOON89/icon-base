@@ -5,10 +5,10 @@ export type ParserType = "DELIMITER" | "FIXED_WIDTH" | "REGEX";
 
 // ─── 파서 규칙 아이템 ────────────────────────────────────────────────────────
 // [2026-04-20] configJson은 DELIMITER에서 null (파서레벨 delimiter 사용), FIXED_WIDTH/REGEX에서만 사용
+// [2026-04-21] targetStandardFieldId 제거 — 표준 필드 매핑은 원본 스키마에서 별도 처리
 export interface ParserRuleItem {
   ruleOrder: number;
   configJson?: string | null;
-  targetStandardFieldId?: string | null;
   targetFieldName: string;
 }
 
@@ -16,7 +16,6 @@ export interface ParserRuleResponse {
   parserRuleId: string;
   ruleOrder: number;
   configJson?: string | null;
-  targetStandardFieldId?: string | null;
   targetFieldName?: string | null;
 }
 

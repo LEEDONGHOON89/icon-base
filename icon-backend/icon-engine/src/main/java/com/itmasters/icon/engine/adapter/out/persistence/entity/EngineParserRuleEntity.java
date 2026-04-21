@@ -5,6 +5,7 @@ import lombok.*;
 
 // [2026-04-20] 룰 엔진용 파서 규칙 엔티티 (parser_rules 테이블 읽기 전용)
 // [2026-04-20] 재설계: config_json nullable (DELIMITER는 파서레벨 config 사용)
+// [2026-04-21] target_standard_field_id 제거
 @Entity
 @Table(name = "parser_rules")
 @Getter
@@ -33,9 +34,6 @@ public class EngineParserRuleEntity {
      */
     @Column(name = "config_json", columnDefinition = "jsonb")
     private String configJson;
-
-    @Column(name = "target_standard_field_id", length = 100)
-    private String targetStandardFieldId;
 
     /** 출력 필드명 (예: COLUMN1) */
     @Column(name = "target_field_name", length = 255)

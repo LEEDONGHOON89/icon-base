@@ -11,6 +11,7 @@ import java.util.List;
 
 // [2026-04-20] 파서 CRUD DTO
 // [2026-04-20] 재설계: sourceField/configJson 파서레벨 추가, 규칙은 출력필드명만 관리
+// [2026-04-21] 파서 규칙에서 targetStandardFieldId 제거
 public class ParserDto {
 
     // ─── 파서 생성 요청 ──────────────────────────────────────────────────────
@@ -97,9 +98,6 @@ public class ParserDto {
         @Schema(description = "규칙별 설정 JSON (FIXED_WIDTH: {\"byteLength\":4}, REGEX: {\"pattern\":\"...\",\"group\":1})")
         private String configJson;
 
-        @Schema(description = "표준 필드 ID (선택)")
-        private String targetStandardFieldId;
-
         @NotBlank(message = "출력 필드명은 필수입니다")
         @Schema(description = "출력 필드명", example = "COLUMN1")
         private String targetFieldName;
@@ -160,9 +158,6 @@ public class ParserDto {
 
         @Schema(description = "규칙별 설정 JSON")
         private String configJson;
-
-        @Schema(description = "표준 필드 ID")
-        private String targetStandardFieldId;
 
         @Schema(description = "출력 필드명")
         private String targetFieldName;

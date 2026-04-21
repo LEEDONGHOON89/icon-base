@@ -107,7 +107,6 @@ public class ParserService {
                     .parser(parser)
                     .ruleOrder(i)  // 항상 인덱스 순서로 저장
                     .configJson(item.getConfigJson())
-                    .targetStandardFieldId(item.getTargetStandardFieldId())
                     .targetFieldName(item.getTargetFieldName())
                     .build());
         }
@@ -132,7 +131,6 @@ public class ParserService {
                         .parserRuleId(r.getParserRuleId())
                         .ruleOrder(r.getRuleOrder())
                         .configJson(r.getConfigJson())
-                        .targetStandardFieldId(r.getTargetStandardFieldId())
                         .targetFieldName(r.getTargetFieldName())
                         .build()).toList();
 

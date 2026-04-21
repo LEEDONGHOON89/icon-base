@@ -6,6 +6,7 @@ import lombok.*;
 
 // [2026-04-20] 파서 추출 규칙 JPA 엔티티
 // [2026-04-20] 재설계: config_json nullable (DELIMITER는 파서레벨 설정 사용)
+// [2026-04-21] target_standard_field_id 제거 — 표준 필드 매핑은 원본 스키마에서 별도 처리
 @Entity
 @Table(name = "parser_rules")
 @Getter
@@ -35,10 +36,6 @@ public class ParserRuleEntity extends Auditable {
      */
     @Column(name = "config_json", columnDefinition = "jsonb")
     private String configJson;
-
-    /** 추출 결과를 저장할 표준 필드 ID (선택) */
-    @Column(name = "target_standard_field_id", length = 100)
-    private String targetStandardFieldId;
 
     /** 출력 필드명 (예: COLUMN1, COLUMN2) */
     @Column(name = "target_field_name", length = 255)
