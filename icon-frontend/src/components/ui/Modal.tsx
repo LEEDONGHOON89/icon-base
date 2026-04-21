@@ -27,10 +27,12 @@ export function Modal({
 }: ModalProps) {
   if (!isOpen) return null;
 
+  // [2026-04-21] max-h-[90vh] + flex 구조로 헤더 고정, 본문 스크롤 처리
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className={`bg-white rounded-lg w-full ${sizeClasses[size]} p-6 mx-4`}>
-        <div className="flex justify-between items-center mb-6">
+      <div className={`bg-white rounded-lg w-full ${sizeClasses[size]} mx-4 flex flex-col max-h-[90vh]`}>
+        {/* 헤더 — 고정 */}
+        <div className="flex justify-between items-center px-6 pt-6 pb-4 shrink-0 border-b border-gray-100">
           <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
           <button
             onClick={onClose}
@@ -39,7 +41,10 @@ export function Modal({
             <XMarkIcon className="h-6 w-6" />
           </button>
         </div>
-        {children}
+        {/* 본문 — 스크롤 */}
+        <div className="overflow-y-auto flex-1 px-6 py-5">
+          {children}
+        </div>
       </div>
     </div>
   );
