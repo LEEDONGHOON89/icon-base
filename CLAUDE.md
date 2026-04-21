@@ -13,6 +13,20 @@
 
 ---
 
+## TODO 목록 참조
+
+신규 기능 개발 작업 시 TODO 목록을 확인하여 기존 스펙과 중복·충돌을 방지한다.
+
+- **목록**: [`docs/todo_list/TODO.md`](docs/todo_list/TODO.md) — 전체 TODO 인덱스 (상태 관리)
+- **상세**: `docs/todo_list/todo-NNN_작업명.md` — 항목별 상세 스펙 (UI 구성, API, 구현 파일 목록)
+
+TODO 항목을 구현 완료한 경우:
+1. 해당 `todo-NNN_*.md` 파일의 상태를 `✅ 완료`로 변경
+2. `TODO.md` 인덱스에서 해당 행을 "완료 항목" 표로 이동
+3. `docs/work_list/YYYY-MM-DD_작업내용.md` 작업이력 파일 생성
+
+---
+
 ## 아키텍처 문서 (작업 전 참조)
 
 icon 관련 기능 추가·수정 작업 시 아래 문서를 먼저 읽어 컨텍스트를 파악한다.
