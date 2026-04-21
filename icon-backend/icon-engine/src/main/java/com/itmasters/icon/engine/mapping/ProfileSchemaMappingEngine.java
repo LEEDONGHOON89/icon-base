@@ -261,11 +261,10 @@ public class ProfileSchemaMappingEngine implements FieldMappingEngine {
         }
     }
 
+    // [2026-04-21] targetStandardFieldId 제거에 따라 targetFieldName만 사용
     private String resolveTargetKey(EngineParserRuleEntity rule) {
         if (rule.getTargetFieldName() != null && !rule.getTargetFieldName().isBlank())
             return rule.getTargetFieldName();
-        if (rule.getTargetStandardFieldId() != null && !rule.getTargetStandardFieldId().isBlank())
-            return rule.getTargetStandardFieldId();
         return null;
     }
 
