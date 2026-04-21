@@ -2,6 +2,8 @@ package com.itmasters.icon.engine.adapter.out.persistence.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 // [2026-04-20] 룰 엔진용 파서 규칙 엔티티 (parser_rules 테이블 읽기 전용)
 // [2026-04-20] 재설계: config_json nullable (DELIMITER는 파서레벨 config 사용)
@@ -32,6 +34,8 @@ public class EngineParserRuleEntity {
      * FIXED_WIDTH: {"byteLength":4}
      * REGEX      : {"pattern":"^(\\w+)","group":1}
      */
+    // [2026-04-21] JSONB 타입 바인딩을 위해 @JdbcTypeCode(SqlTypes.JSON) 추가
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "config_json", columnDefinition = "jsonb")
     private String configJson;
 

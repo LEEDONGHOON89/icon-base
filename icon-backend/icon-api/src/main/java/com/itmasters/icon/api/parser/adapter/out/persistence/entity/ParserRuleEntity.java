@@ -3,6 +3,8 @@ package com.itmasters.icon.api.parser.adapter.out.persistence.entity;
 import com.itmasters.icon.entity.Auditable;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 // [2026-04-20] 파서 추출 규칙 JPA 엔티티
 // [2026-04-20] 재설계: config_json nullable (DELIMITER는 파서레벨 설정 사용)
@@ -34,6 +36,8 @@ public class ParserRuleEntity extends Auditable {
      * FIXED_WIDTH: {"byteLength":4}
      * REGEX      : {"pattern":"^(\\w+)","group":1}
      */
+    // [2026-04-21] JSONB 타입 바인딩을 위해 @JdbcTypeCode(SqlTypes.JSON) 추가
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "config_json", columnDefinition = "jsonb")
     private String configJson;
 

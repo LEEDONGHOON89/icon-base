@@ -3,6 +3,8 @@ package com.itmasters.icon.engine.adapter.out.persistence.entity;
 import com.itmasters.icon.common.domain.type.ParserType;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,6 +40,8 @@ public class EngineParserEntity {
      * FIXED_WIDTH: null
      * REGEX      : null
      */
+    // [2026-04-21] JSONB 타입 바인딩을 위해 @JdbcTypeCode(SqlTypes.JSON) 추가
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "config_json", columnDefinition = "jsonb")
     private String configJson;
 
