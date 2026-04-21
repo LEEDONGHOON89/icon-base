@@ -186,13 +186,13 @@ public class FileSystemRealtimeService {
             }
 
             String line;
-            int lineNumber = 0;
             while ((line = readLine(raf, charset)) != null) {
                 if (line.trim().isEmpty()) {
                     pos.setOffset(raf.getFilePointer());
                     continue;
                 }
-                Map<String, Object> record = parseLine(line, format, pos.getHeaders(), ++lineNumber);
+                // [2026-04-21] lineNumber 파라미터 제거 (_line 필드 삭제에 따른 정리)
+                Map<String, Object> record = parseLine(line, format, pos.getHeaders());
                 if (record != null && !record.isEmpty()) {
                     out.add(record);
                     linesRead++;
@@ -203,22 +203,22 @@ public class FileSystemRealtimeService {
         return linesRead;
     }
 
-    private Map<String, Object> parseLine(String line, String format,
-                                          List<String> headers, int lineNumber) {
+    // [2026-04-21] _line(행 번호) 필드 제거 — landing_records에 불필요한 메타데이터 저장 방지
+    //              lineNumber 파라미터도 함께 제거
+    private Map<String, Object> parseLine(String line, String format, List<String> headers) {
         switch (format) {
             case "CSV":
-                return parseCsvRecord(line, headers, lineNumber);
+                return parseCsvRecord(line, headers);
             case "JSON":
                 return parseJsonLine(line);
             default:
                 Map<String, Object> rec = new LinkedHashMap<>();
                 rec.put("message", line);
-                rec.put("_line", lineNumber);
                 return rec;
         }
     }
 
-    private Map<String, Object> parseCsvRecord(String line, List<String> headers, int lineNumber) {
+    private Map<String, Object> parseCsvRecord(String line, List<String> headers) {
         List<String> values = parseCsvLine(line);
         Map<String, Object> rec = new LinkedHashMap<>();
 
@@ -233,7 +233,6 @@ public class FileSystemRealtimeService {
                 rec.put("col_" + i, values.get(i));
             }
         }
-        rec.put("_line", lineNumber);
         return rec;
     }
 
