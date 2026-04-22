@@ -74,6 +74,19 @@ public class DatabaseConfigEntity extends Auditable {
     @Column(name = "incremental_column_initial_value", length = 200)
     private String incrementalColumnInitialValue;
 
+    // [2026-04-22] 보조 증분 컬럼 — 복합 키 기반 증분 수집 지원 (선택사항)
+    @Column(name = "secondary_incremental_column", length = 200)
+    private String secondaryIncrementalColumn;
+
+    @Column(name = "secondary_incremental_column_type", length = 50)
+    private String secondaryIncrementalColumnType;
+
+    @Column(name = "secondary_incremental_column_initial_value", length = 200)
+    private String secondaryIncrementalColumnInitialValue;
+
+    @Column(name = "last_secondary_processed_value", length = 200)
+    private String lastSecondaryProcessedValue;
+
     @Column(name = "batch_size")
     private Integer batchSize;
 
@@ -119,9 +132,10 @@ public class DatabaseConfigEntity extends Auditable {
         this.agentId = agentId;
     }
 
-    // [2026-04-22] 수집 하이워터마크 초기화 — 처음부터 재수집 지원
+    // [2026-04-22] 수집 하이워터마크 초기화 — 처음부터 재수집 지원 (보조 컬럼 포함)
     public void resetWatermark() {
         this.lastProcessedValue = null;
+        this.lastSecondaryProcessedValue = null;
         this.lastQueryTime = null;
     }
 
@@ -168,16 +182,31 @@ public class DatabaseConfigEntity extends Auditable {
         this.idleTimeoutSeconds = idleTimeoutSeconds;
     }
 
-    // [2026-04-21] incrementalColumnInitialValue 파라미터 추가
+    // [2026-04-22] 보조 증분 컬럼 파라미터 추가
     public void applyIngestion(String mainQuery,
                                String incrementalColumn,
                                String incrementalColumnType,
                                String incrementalColumnInitialValue,
+                               String secondaryIncrementalColumn,
+                               String secondaryIncrementalColumnType,
+                               String secondaryIncrementalColumnInitialValue,
                                Integer batchSize) {
         this.mainQuery = mainQuery;
         this.incrementalColumn = incrementalColumn;
         this.incrementalColumnType = incrementalColumnType;
         this.incrementalColumnInitialValue = incrementalColumnInitialValue;
+        // [2026-04-22] 보조 증분 컬럼 — null/blank 입력 시 기존 하이워터마크도 초기화
+        String prevSecondary = this.secondaryIncrementalColumn;
+        this.secondaryIncrementalColumn = (secondaryIncrementalColumn != null && !secondaryIncrementalColumn.isBlank())
+                ? secondaryIncrementalColumn : null;
+        this.secondaryIncrementalColumnType = (secondaryIncrementalColumnType != null && !secondaryIncrementalColumnType.isBlank())
+                ? secondaryIncrementalColumnType : null;
+        this.secondaryIncrementalColumnInitialValue = (secondaryIncrementalColumnInitialValue != null && !secondaryIncrementalColumnInitialValue.isBlank())
+                ? secondaryIncrementalColumnInitialValue : null;
+        // 보조 컬럼이 제거된 경우 보조 하이워터마크 초기화
+        if (prevSecondary != null && this.secondaryIncrementalColumn == null) {
+            this.lastSecondaryProcessedValue = null;
+        }
         this.batchSize = batchSize;
     }
 

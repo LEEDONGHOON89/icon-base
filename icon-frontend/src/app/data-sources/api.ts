@@ -79,6 +79,10 @@ export interface DatabaseConfig {
   incrementalColumnType?: string;
   // [2026-04-21] 증분 컬럼 초기값 — 첫 수집 시 시작 하이워터마크
   incrementalColumnInitialValue?: string;
+  // [2026-04-22] 보조 증분 컬럼 — 복합 키 기반 증분 수집 (선택사항, mainQuery에 두 번째 ? 필요)
+  secondaryIncrementalColumn?: string;
+  secondaryIncrementalColumnType?: string;
+  secondaryIncrementalColumnInitialValue?: string;
   batchSize?: number;
   isActive?: boolean;
   connectionStatus?: string;

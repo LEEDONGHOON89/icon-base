@@ -67,8 +67,21 @@ public class DatabaseService {
                     dataSourceId, effectiveLastValue);
         }
 
-        log.info("[{}] DATABASE 직접 폴링 시작 - incrementalColumn={}, lastValue={}",
-                dataSourceId, config.getIncrementalColumn(), effectiveLastValue);
+        // [2026-04-22] 보조 증분 컬럼 유효 하이워터마크
+        boolean hasSecondary = config.getSecondaryIncrementalColumn() != null
+                && !config.getSecondaryIncrementalColumn().isBlank();
+        String effectiveSecondaryLastValue = hasSecondary ? config.getLastSecondaryProcessedValue() : null;
+        if (hasSecondary && effectiveSecondaryLastValue == null
+                && config.getSecondaryIncrementalColumnInitialValue() != null
+                && !config.getSecondaryIncrementalColumnInitialValue().isBlank()) {
+            effectiveSecondaryLastValue = config.getSecondaryIncrementalColumnInitialValue();
+            log.info("[{}] 첫 수집 — 보조 컬럼 초기값 사용: secondaryIncrementalColumnInitialValue={}",
+                    dataSourceId, effectiveSecondaryLastValue);
+        }
+
+        log.info("[{}] DATABASE 직접 폴링 시작 - incrementalColumn={}, lastValue={}, secondaryColumn={}, secondaryLastValue={}",
+                dataSourceId, config.getIncrementalColumn(), effectiveLastValue,
+                config.getSecondaryIncrementalColumn(), effectiveSecondaryLastValue);
 
         // [2026-04-22] maxLinesPerPoll / maxRecordBytes 백엔드 직접 수집에도 적용
         int maxLines = (config.getMaxLinesPerPoll() != null && config.getMaxLinesPerPoll() > 0)
@@ -78,6 +91,7 @@ public class DatabaseService {
 
         List<Map<String, Object>> records = new ArrayList<>();
         String newLastValue = effectiveLastValue;
+        String newLastSecondaryValue = effectiveSecondaryLastValue;
 
         try (Connection conn = DriverManager.getConnection(
                 jdbcUrl, config.getUsername(), config.getPasswordEncrypted());
@@ -85,6 +99,10 @@ public class DatabaseService {
 
             // [2026-04-21] effectiveLastValue 사용 (초기값 또는 하이워터마크)
             bindIncrementalParam(ps, 1, effectiveLastValue, config.getIncrementalColumnType());
+            // [2026-04-22] 보조 증분 컬럼이 설정된 경우 두 번째 파라미터 바인딩
+            if (hasSecondary) {
+                bindIncrementalParam(ps, 2, effectiveSecondaryLastValue, config.getSecondaryIncrementalColumnType());
+            }
 
             // [2026-04-22] SQL 레벨 행 수 제한: maxLinesPerPoll 우선, 없으면 batchSize
             int batchSize = config.getBatchSize() != null && config.getBatchSize() > 0
@@ -114,6 +132,11 @@ public class DatabaseService {
                     String val = rs.getString(config.getIncrementalColumn());
                     if (val != null) newLastValue = val;
                 }
+                // [2026-04-22] 보조 컬럼 하이워터마크 갱신
+                if (hasSecondary) {
+                    String secVal = rs.getString(config.getSecondaryIncrementalColumn());
+                    if (secVal != null) newLastSecondaryValue = secVal;
+                }
             }
             rs.close();
 
@@ -125,9 +148,11 @@ public class DatabaseService {
             throw new RuntimeException("DATABASE 폴링 실패: " + e.getMessage(), e);
         }
 
-        // 하이워터마크 변경 시 DB 갱신
-        if (!records.isEmpty() && !Objects.equals(newLastValue, config.getLastProcessedValue())) {
-            config.updateLastProcessedValue(newLastValue);
+        // [2026-04-22] 하이워터마크 변경 시 DB 갱신 — 보조 컬럼 포함
+        boolean primaryChanged = !Objects.equals(newLastValue, config.getLastProcessedValue());
+        boolean secondaryChanged = hasSecondary && !Objects.equals(newLastSecondaryValue, config.getLastSecondaryProcessedValue());
+        if (!records.isEmpty() && (primaryChanged || secondaryChanged)) {
+            config.updateLastProcessedValues(newLastValue, hasSecondary ? newLastSecondaryValue : config.getLastSecondaryProcessedValue());
             databaseConfigRepository.save(config);
         }
 

@@ -101,6 +101,10 @@ export default function ConfigForm({ dataSource }: Props) {
         incrementalColumnType: config.database.incrementalColumnType,
         // [2026-04-21] 증분 컬럼 초기값 로드
         incrementalColumnInitialValue: config.database.incrementalColumnInitialValue,
+        // [2026-04-22] 보조 증분 컬럼 로드
+        secondaryIncrementalColumn: config.database.secondaryIncrementalColumn,
+        secondaryIncrementalColumnType: config.database.secondaryIncrementalColumnType || "NUMBER",
+        secondaryIncrementalColumnInitialValue: config.database.secondaryIncrementalColumnInitialValue,
         batchSize: config.database.batchSize || 1000,
         // [2026-03-13] 에이전트 연결 정보 초기 로드
         agentId: config.database.agentId || undefined,
@@ -529,6 +533,63 @@ export default function ConfigForm({ dataSource }: Props) {
                 <p className="mt-1 text-xs text-gray-400">
                   미입력 시 DATETIME은 1970-01-01, NUMBER는 0부터 수집합니다. 이미 수집이 시작된 경우 이 값은 무시됩니다.
                 </p>
+              </div>
+              {/* [2026-04-22] 보조 증분 컬럼 — 복합 키 기반 증분 수집 (선택사항) */}
+              <div className="md:col-span-2">
+                <div className="border border-dashed border-gray-300 rounded-lg p-3 bg-gray-50">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-sm font-medium text-gray-700">보조 증분 컬럼</span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">선택사항</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-3">
+                    복합 키 기반 증분 수집 시 사용. 설정 시 메인 쿼리에 두 번째{" "}
+                    <code className="bg-gray-200 px-1 rounded text-xs">?</code> 플레이스홀더가 필요합니다.
+                    <br />
+                    <span className="text-gray-400">예: WHERE updated_at &gt;= ? AND seq_id &gt; ? ORDER BY updated_at, seq_id ASC</span>
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">보조 증분 컬럼명</label>
+                      <input
+                        type="text"
+                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                        placeholder="예: seq_id, id, row_num"
+                        value={db.secondaryIncrementalColumn || ""}
+                        onChange={(e) => setDb({ ...db, secondaryIncrementalColumn: e.target.value || undefined })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">보조 컬럼 타입</label>
+                      <select
+                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                        value={db.secondaryIncrementalColumnType || "NUMBER"}
+                        onChange={(e) => setDb({ ...db, secondaryIncrementalColumnType: e.target.value })}
+                        disabled={!db.secondaryIncrementalColumn}
+                      >
+                        <option value="NUMBER">NUMBER (숫자 시퀀스/ID)</option>
+                        <option value="DATETIME">DATETIME (날짜/시간)</option>
+                      </select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        보조 컬럼 초기값
+                        <span className="ml-2 text-xs font-normal text-gray-400">(선택사항 — 첫 수집 시작 기준값)</span>
+                      </label>
+                      <input
+                        type="text"
+                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                        placeholder={
+                          (db.secondaryIncrementalColumnType || "NUMBER") === "DATETIME"
+                            ? "예: 2024-01-01 00:00:00"
+                            : "예: 0  (이 값보다 큰 레코드부터 수집)"
+                        }
+                        value={db.secondaryIncrementalColumnInitialValue || ""}
+                        onChange={(e) => setDb({ ...db, secondaryIncrementalColumnInitialValue: e.target.value || undefined })}
+                        disabled={!db.secondaryIncrementalColumn}
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
               <LabeledInput
                 label="배치 크기"

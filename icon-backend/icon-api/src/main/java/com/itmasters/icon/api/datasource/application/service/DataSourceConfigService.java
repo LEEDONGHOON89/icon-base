@@ -143,11 +143,17 @@ public class DataSourceConfigService {
             // [2026-04-21] incrementalColumnType: null 입력 시 "DATETIME" 기본값 적용
             String colType = (in.getIncrementalColumnType() != null && !in.getIncrementalColumnType().isBlank())
                     ? in.getIncrementalColumnType() : "DATETIME";
+            // [2026-04-22] 보조 증분 컬럼 타입 — null/blank 입력 시 "DATETIME" 기본값 적용
+            String secColType = (in.getSecondaryIncrementalColumnType() != null && !in.getSecondaryIncrementalColumnType().isBlank())
+                    ? in.getSecondaryIncrementalColumnType() : null;
             entity.applyIngestion(
                     in.getMainQuery(),
                     in.getIncrementalColumn(),
                     colType,
                     in.getIncrementalColumnInitialValue(),
+                    in.getSecondaryIncrementalColumn(),
+                    secColType,
+                    in.getSecondaryIncrementalColumnInitialValue(),
                     in.getBatchSize()
             );
             // [2026-03-13] DATABASE 에이전트 연결 정보 저장
@@ -227,6 +233,10 @@ public class DataSourceConfigService {
                 .incrementalColumnType(e.getIncrementalColumnType())
                 // [2026-04-21] 초기값 포함
                 .incrementalColumnInitialValue(e.getIncrementalColumnInitialValue())
+                // [2026-04-22] 보조 증분 컬럼
+                .secondaryIncrementalColumn(e.getSecondaryIncrementalColumn())
+                .secondaryIncrementalColumnType(e.getSecondaryIncrementalColumnType())
+                .secondaryIncrementalColumnInitialValue(e.getSecondaryIncrementalColumnInitialValue())
                 .batchSize(e.getBatchSize())
                 .isActive(e.getIsActive())
                 .connectionStatus(e.getConnectionStatus())

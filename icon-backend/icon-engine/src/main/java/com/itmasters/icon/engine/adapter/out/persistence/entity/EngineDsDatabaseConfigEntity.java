@@ -63,6 +63,20 @@ public class EngineDsDatabaseConfigEntity {
     @Column(name = "incremental_column_initial_value", length = 200)
     private String incrementalColumnInitialValue;
 
+    // [2026-04-22] 보조 증분 컬럼 — 복합 키 기반 증분 수집 지원 (선택사항)
+    @Column(name = "secondary_incremental_column", length = 200)
+    private String secondaryIncrementalColumn;
+
+    @Column(name = "secondary_incremental_column_type", length = 50)
+    private String secondaryIncrementalColumnType;
+
+    @Column(name = "secondary_incremental_column_initial_value", length = 200)
+    private String secondaryIncrementalColumnInitialValue;
+
+    /** 보조 컬럼의 마지막으로 처리된 값 (하이워터마크) */
+    @Column(name = "last_secondary_processed_value", length = 200)
+    private String lastSecondaryProcessedValue;
+
     @Column(name = "batch_size")
     private Integer batchSize;
 
@@ -89,9 +103,16 @@ public class EngineDsDatabaseConfigEntity {
     @Column(name = "max_record_bytes")
     private Integer maxRecordBytes;
 
-    /** 하이워터마크 갱신 */
+    /** 하이워터마크 갱신 (기본 컬럼만) */
     public void updateLastProcessedValue(String value) {
         this.lastProcessedValue = value;
+        this.lastQueryTime = LocalDateTime.now();
+    }
+
+    // [2026-04-22] 복합 키 하이워터마크 갱신 — 기본 + 보조 컬럼 동시 갱신
+    public void updateLastProcessedValues(String primaryValue, String secondaryValue) {
+        this.lastProcessedValue = primaryValue;
+        this.lastSecondaryProcessedValue = secondaryValue;
         this.lastQueryTime = LocalDateTime.now();
     }
 }
