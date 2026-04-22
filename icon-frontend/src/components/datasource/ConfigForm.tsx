@@ -229,6 +229,29 @@ export default function ConfigForm({ dataSource }: Props) {
                 onChange={(v) => setFs({ ...fs, scanIntervalMinutes: v ? Number(v) : 60 })}
                 placeholder="기본값: 60초 (1분)"
               />
+              {/* [2026-04-22] 수집기 공통 설정 — 에이전트/백엔드 직접 수집 모두 적용 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">폴 당 최대 처리 라인 수</label>
+                <input
+                  type="number"
+                  className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                  placeholder="예: 10000"
+                  value={fs.maxLinesPerPoll ?? ""}
+                  onChange={(e) => setFs({ ...fs, maxLinesPerPoll: e.target.value ? Number(e.target.value) : undefined })}
+                />
+                <p className="text-xs text-gray-400 mt-0.5">1회 폴링 시 읽을 최대 줄 수. 미입력 시 기본값 10,000 적용</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">최대 레코드 크기 (bytes)</label>
+                <input
+                  type="number"
+                  className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                  placeholder="예: 65536 (64KB).  0 = 제한 없음"
+                  value={fs.maxRecordBytes ?? ""}
+                  onChange={(e) => setFs({ ...fs, maxRecordBytes: e.target.value ? Number(e.target.value) : undefined })}
+                />
+                <p className="text-xs text-gray-400 mt-0.5">줄 크기가 이 값을 초과하면 잘라냅니다. 0 입력 시 제한 없음</p>
+              </div>
             </div>
           </div>
 
@@ -279,40 +302,6 @@ export default function ConfigForm({ dataSource }: Props) {
               )}
             </div>
           </div>
-
-          {/* [2026-04-22] 에이전트 수집 설정 (에이전트 선택 시만 표시) — 폴링 간격은 기본 설정과 통합 */}
-          {fs.agentId && (
-            <div>
-              <h4 className="text-sm font-semibold text-gray-700 mb-3">에이전트 수집 설정</h4>
-              <p className="text-xs text-gray-500 mb-3">
-                에이전트가 파일을 폴링할 때 적용되는 세부 설정입니다. 폴링 간격은 위 "기본 설정"의 값을 공통으로 사용합니다.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">폴 당 최대 처리 라인 수</label>
-                  <input
-                    type="number"
-                    className="w-full p-2 border border-gray-300 rounded-md text-sm"
-                    placeholder="예: 10000"
-                    value={fs.maxLinesPerPoll ?? ""}
-                    onChange={(e) => setFs({ ...fs, maxLinesPerPoll: e.target.value ? Number(e.target.value) : undefined })}
-                  />
-                  <p className="text-xs text-gray-400 mt-0.5">1회 폴링 시 읽을 최대 줄 수. 미입력 시 기본값 10,000 적용</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">최대 레코드 크기 (bytes)</label>
-                  <input
-                    type="number"
-                    className="w-full p-2 border border-gray-300 rounded-md text-sm"
-                    placeholder="예: 65536 (64KB).  0 = 제한 없음"
-                    value={fs.maxRecordBytes ?? ""}
-                    onChange={(e) => setFs({ ...fs, maxRecordBytes: e.target.value ? Number(e.target.value) : undefined })}
-                  />
-                  <p className="text-xs text-gray-400 mt-0.5">줄 크기가 이 값을 초과하면 잘라냅니다. 0 입력 시 제한 없음</p>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* 파일 형식 */}
           <div>
@@ -577,6 +566,18 @@ export default function ConfigForm({ dataSource }: Props) {
                 />
                 <p className="text-xs text-gray-400 mt-0.5">1회 폴링 시 가져올 최대 행 수. 미입력 시 기본값 1,000 적용</p>
               </div>
+              {/* [2026-04-22] 최대 레코드 크기 — 수집기 공통 설정 (에이전트/백엔드 직접 수집 모두 적용) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">최대 레코드 크기 (bytes)</label>
+                <input
+                  type="number"
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  placeholder="예: 65536 (64KB).  0 = 제한 없음"
+                  value={db.maxRecordBytes ?? ""}
+                  onChange={(e) => setDb({ ...db, maxRecordBytes: e.target.value ? Number(e.target.value) : undefined })}
+                />
+                <p className="text-xs text-gray-400 mt-0.5">레코드가 이 값을 초과하면 잘라냅니다. 0 입력 시 제한 없음</p>
+              </div>
             </div>
           </div>
 
@@ -619,32 +620,6 @@ export default function ConfigForm({ dataSource }: Props) {
                     </span>
                   </div>
                 </div>
-              )}
-              {/* [2026-04-22] 에이전트 수집 설정 — 폴링 간격은 "적재 설정"과 통합 */}
-              {db.agentId && (
-                <>
-                  <div className="md:col-span-2">
-                    <div className="flex items-start gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-md">
-                      <svg className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span className="text-xs text-blue-700">
-                        폴링 간격 · 최대 처리 행 수는 위 <strong>적재 설정</strong>에서 공통으로 설정합니다.
-                      </span>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">최대 레코드 크기 (bytes)</label>
-                    <input
-                      type="number"
-                      className="w-full p-2 border border-gray-300 rounded-md text-sm"
-                      placeholder="예: 65536 (64KB).  0 = 제한 없음"
-                      value={db.maxRecordBytes ?? ""}
-                      onChange={(e) => setDb({ ...db, maxRecordBytes: e.target.value ? Number(e.target.value) : undefined })}
-                    />
-                    <p className="text-xs text-gray-400 mt-0.5">레코드가 이 값을 초과하면 잘라냅니다. 0 입력 시 제한 없음</p>
-                  </div>
-                </>
               )}
             </div>
           </div>
