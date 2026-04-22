@@ -38,4 +38,7 @@ public interface FileSystemConfigJpaRepository extends JpaRepository<FileSystemC
      * 감시 디렉토리로 설정 조회 (중복 방지용)
      */
     List<FileSystemConfigEntity> findByWatchDirectory(String watchDirectory);
+
+    // [2026-04-21] 에이전트 ID로 모든 파일 시스템 설정 조회 (스냅샷 생성용)
+    List<FileSystemConfigEntity> findAllByAgentId(String agentId);
 }

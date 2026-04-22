@@ -1,5 +1,6 @@
 package com.icon.agent.target;
 
+import com.icon.agent.audit.AuditLogger;
 import com.icon.agent.batch.Batch;
 import com.icon.agent.batch.BatchBuilder;
 import com.icon.agent.collector.FileCollector;
@@ -9,8 +10,14 @@ import com.icon.agent.config.CollectorConfig;
 import com.icon.agent.config.ConfigManager;
 import com.icon.agent.config.FileCollectorConfig;
 import com.icon.agent.config.JdbcCollectorConfig;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import com.icon.agent.config.RpcConfig;
 import com.icon.agent.config.TargetConfig;
+import com.icon.agent.config.TlsConfig;
 import com.icon.agent.queue.RecordQueue;
+import com.icon.agent.rpc.BatchRateLimiter;
 import com.icon.agent.rpc.RpcClient;
 import com.icon.agent.spool.SpoolManager;
 import com.icon.agent.store.FilePositionStore;
@@ -42,9 +49,13 @@ public class TargetContext {
     private final String targetId;
     private final TargetConfig config;
     private final ConfigManager configManager;
+    // [2026-04-21] CONFIG_UPDATE 후 targets.json 동기화 콜백 (targets.json 관리 target 전용)
+    private final Runnable storeSync;
 
     private final List<FileCollector> fileCollectors = new ArrayList<>();
     private final List<JdbcCollector> jdbcCollectors = new ArrayList<>();
+    // [2026-04-21] COLLECTORS_SYNC로 수신한 전체 수집기 목록 (활성·비활성 포함) — CLI 상태 조회용
+    private volatile java.util.Map<String, CollectorConfig> knownCollectors = new java.util.LinkedHashMap<>();
     private RecordQueue queue;
     private BatchBuilder batchBuilder;
     private RpcClient rpcClient;
@@ -56,14 +67,23 @@ public class TargetContext {
     private final ExecutorService deliveryExecutor;
     private volatile boolean running = false;
 
+    // [2026-04-21] 전송 속도 제한
+    private BatchRateLimiter rateLimiter;
+
     public TargetContext(TargetConfig config) {
-        this(config, null);
+        this(config, null, null);
     }
 
     public TargetContext(TargetConfig config, ConfigManager configManager) {
+        this(config, configManager, null);
+    }
+
+    // [2026-04-21] storeSync: targets.json 관리 target에서 CONFIG_UPDATE 시 동기화
+    public TargetContext(TargetConfig config, ConfigManager configManager, Runnable storeSync) {
         this.targetId = config.getId();
         this.config = config;
         this.configManager = configManager;
+        this.storeSync = storeSync;
         this.deliveryExecutor = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "delivery-" + targetId);
             t.setDaemon(true);
@@ -85,34 +105,32 @@ public class TargetContext {
             // TLS 설정
             SSLContext ssl = SslContextFactory.build(config.getRpc().getTls());
 
-            // 스풀 초기화
-            spoolManager = new SpoolManager(targetId);
+            // [2026-04-21] 스풀 초기화 — 크기 제한 설정 전달
+            spoolManager = new SpoolManager(
+                    "spool", targetId,
+                    config.getMaxSpoolFiles(),
+                    config.getMaxSpoolSizeMb());
 
             // RPC 연결 (config.yaml 반영을 위해 ConfigManager 전달)
             RpcClient.TargetConfigPersister persister = null;
             RpcClient.CollectorsSyncCallback collectorsSync = null;
-            if (configManager != null) {
-                persister = (tid, rpcEndpoint, compress, tlsKp, tlsKpw, tlsTp, tlsTpw,
-                        qc, mbs, mbm, mbb) -> {
-                    try {
-                        configManager.updateTargetRpcAndSave(tid, rpcEndpoint, compress,
-                                tlsKp, tlsKpw, tlsTp, tlsTpw, qc, mbs, mbm, mbb);
-                    } catch (Exception e) {
-                        log.error("[{}] config.yaml 저장 실패: {}", tid, e.getMessage());
-                    }
-                };
-                collectorsSync = (tid, collectors) -> {
-                    try {
-                        configManager.applyCollectorsAndSave(tid, collectors);
-                        applyCollectorsSync(collectors);
-                    } catch (Exception e) {
-                        log.error("[{}] config.yaml collectors 저장 실패: {}", tid, e.getMessage());
-                    }
-                };
-            }
-            String globalAgentId = (configManager != null && configManager.getConfig().getAgentId() != null && !configManager.getConfig().getAgentId().isBlank())
+            // [2026-04-21] targets는 targets.json에서 관리 — config.yaml 저장 제거
+            //              CONFIG_UPDATE: in-memory 갱신 + targets.json 동기화만 수행
+            // [2026-04-22] maxBatchesPerSecond 파라미터 추가
+            persister = (tid, rpcEndpoint, compress, tlsKp, tlsKpw, tlsTp, tlsTpw,
+                    qc, mbs, mbm, mbb, mbps) -> {
+                applyConfigUpdate(compress, tlsKp, tlsKpw, tlsTp, tlsTpw, qc, mbs, mbm, mbb, mbps);
+                if (storeSync != null) storeSync.run();
+            };
+            // COLLECTORS_SYNC: 런타임 수집기 동기화만 수행 (collectors는 targets.json 미저장, 서버에서 복원)
+            collectorsSync = (tid, collectors) -> applyCollectorsSync(collectors);
+            // [2026-04-22] COLLECTOR_RESET: 수집기 위치 파일 삭제 후 재시작
+            RpcClient.CollectorResetCallback resetCallback = (tid, collectorId) -> resetCollector(collectorId);
+            String globalAgentId = (configManager != null
+                    && configManager.getConfig().getAgentId() != null
+                    && !configManager.getConfig().getAgentId().isBlank())
                     ? configManager.getConfig().getAgentId() : null;
-            rpcClient = new RpcClient(targetId, config, ssl, spoolManager, persister, collectorsSync, globalAgentId);
+            rpcClient = new RpcClient(targetId, config, ssl, spoolManager, persister, collectorsSync, resetCallback, globalAgentId);
             rpcClient.connect();
 
             // [2026-02-25] TargetConfig에서 직접 수집기 목록을 가져와 타입별로 처리
@@ -132,6 +150,8 @@ public class TargetContext {
                     fileCollectors.add(fileCollector);
                     log.info("[{}] 파일 수집기 시작: {} → 위치 저장소: data/{}/{}/positions.dat",
                             targetId, fConfig.getName(), targetId, fConfig.getId());
+                    // [2026-04-21] 감사 로그: 수집기 시작
+                    AuditLogger.collectorStarted(targetId, fConfig.getId(), "FILE", fConfig.getName());
                 } else if ("JDBC".equals(collector.getType()) && collector instanceof JdbcCollectorConfig) {
                     JdbcCollectorConfig jConfig = (JdbcCollectorConfig) collector;
                     // [2026-03-05] FilePositionStore → JdbcWatermarkStore 분리
@@ -142,6 +162,8 @@ public class TargetContext {
                     jdbcCollectors.add(jc);
                     log.info("[{}] JDBC 수집기 시작: {} → 워터마크 저장소: data/{}/{}/watermark.dat",
                             targetId, jConfig.getName(), targetId, jConfig.getId());
+                    // [2026-04-21] 감사 로그: 수집기 시작
+                    AuditLogger.collectorStarted(targetId, jConfig.getId(), "JDBC", jConfig.getName());
                 }
             }
 
@@ -153,6 +175,9 @@ public class TargetContext {
                     config.getMaxBatchMs(),
                     config.getMaxBatchBytes());
 
+            // [2026-04-21] Rate Limiter 초기화
+            rateLimiter = new BatchRateLimiter(config.getMaxBatchesPerSecond());
+
             running = true;
 
             // 전송 루프 시작
@@ -163,6 +188,77 @@ public class TargetContext {
             log.error("[{}] 대상 컨텍스트 시작 실패: {}", targetId, e.getMessage(), e);
         } finally {
             MDC.remove("targetId");
+        }
+    }
+
+    /**
+     * [2026-04-22] COLLECTOR_RESET 수신 시 호출.
+     * 해당 수집기를 중지하고 위치 파일(positions.dat / watermark.dat)을 삭제한 뒤 재시작한다.
+     * 재시작 후 수집기는 파일/DB 처음부터 재수집한다.
+     */
+    public synchronized void resetCollector(String collectorId) {
+        log.info("[{}] 수집기 초기화 요청 - collectorId={}", targetId, collectorId);
+
+        // 1. 실행 중인 수집기 중지
+        fileCollectors.stream()
+                .filter(f -> f.getId().equals(collectorId))
+                .findFirst()
+                .ifPresent(fc -> {
+                    fc.stop();
+                    fileCollectors.remove(fc);
+                    log.info("[{}] 파일 수집기 중지 - collectorId={}", targetId, collectorId);
+                });
+        jdbcCollectors.stream()
+                .filter(j -> j.getId().equals(collectorId))
+                .findFirst()
+                .ifPresent(jc -> {
+                    jc.stop();
+                    jdbcCollectors.remove(jc);
+                    log.info("[{}] JDBC 수집기 중지 - collectorId={}", targetId, collectorId);
+                });
+
+        // 2. 위치 파일 삭제 (positions.dat 또는 watermark.dat)
+        deletePositionFile(Path.of("data", targetId, collectorId, "positions.dat"));
+        deletePositionFile(Path.of("data", targetId, collectorId, "watermark.dat"));
+
+        // 3. 감사 로그
+        AuditLogger.configChanged(targetId, "COLLECTOR_RESET", collectorId);
+
+        // 4. knownCollectors에서 설정을 찾아 재시작 (start() 이후 COLLECTORS_SYNC를 받은 경우)
+        CollectorConfig cfg = knownCollectors.get(collectorId);
+        if (cfg != null && cfg.isEnabled()) {
+            try {
+                if ("FILE".equals(cfg.getType()) && cfg instanceof FileCollectorConfig fConfig) {
+                    FilePositionStore store = new FilePositionStore(targetId, fConfig.getId());
+                    FileCollector fc = new FileCollector(targetId, fConfig, queue, store);
+                    fc.start();
+                    fileCollectors.add(fc);
+                    log.info("[{}] 파일 수집기 초기화 후 재시작 - collectorId={}", targetId, collectorId);
+                    AuditLogger.collectorStarted(targetId, collectorId, "FILE", fConfig.getName());
+                } else if ("JDBC".equals(cfg.getType()) && cfg instanceof JdbcCollectorConfig jConfig) {
+                    JdbcWatermarkStore store = new JdbcWatermarkStore(targetId, jConfig.getId());
+                    JdbcCollector jc = new JdbcCollector(targetId, jConfig, queue, store);
+                    jc.start();
+                    jdbcCollectors.add(jc);
+                    log.info("[{}] JDBC 수집기 초기화 후 재시작 - collectorId={}", targetId, collectorId);
+                    AuditLogger.collectorStarted(targetId, collectorId, "JDBC", jConfig.getName());
+                }
+            } catch (Exception e) {
+                log.error("[{}] 수집기 초기화 후 재시작 실패 - collectorId={}: {}", targetId, collectorId, e.getMessage(), e);
+            }
+        } else {
+            log.warn("[{}] 수집기 설정 없음 또는 비활성 — 재시작 생략, COLLECTORS_SYNC 대기: collectorId={}",
+                    targetId, collectorId);
+        }
+    }
+
+    private void deletePositionFile(Path path) {
+        try {
+            if (Files.deleteIfExists(path)) {
+                log.info("[{}] 수집기 위치 파일 삭제 완료: {}", targetId, path);
+            }
+        } catch (IOException e) {
+            log.error("[{}] 수집기 위치 파일 삭제 실패: {} - {}", targetId, path, e.getMessage());
         }
     }
 
@@ -187,6 +283,13 @@ public class TargetContext {
                 .map(CollectorConfig::getId)
                 .collect(Collectors.toSet());
 
+        // [2026-04-21] 전체 수집기 목록(활성·비활성) 보존 — getCollectorInfos()에서 비활성 수집기도 표시
+        if (newCollectors != null) {
+            java.util.Map<String, CollectorConfig> updated = new java.util.LinkedHashMap<>();
+            newCollectors.forEach(c -> updated.put(c.getId(), c));
+            this.knownCollectors = updated;
+        }
+
         synchronized (this) {
             // 1) 제거·비활성화된 수집기 중지
             List<FileCollector> toStopFile = fileCollectors.stream()
@@ -196,6 +299,8 @@ public class TargetContext {
                 f.stop();
                 fileCollectors.remove(f);
                 log.info("[{}] 파일 수집기 동기화로 중지: {}", targetId, f.getId());
+                // [2026-04-21] 감사 로그: 수집기 중지
+                AuditLogger.collectorStopped(targetId, f.getId(), "FILE");
             });
 
             List<JdbcCollector> toStopJdbc = jdbcCollectors.stream()
@@ -205,6 +310,8 @@ public class TargetContext {
                 j.stop();
                 jdbcCollectors.remove(j);
                 log.info("[{}] JDBC 수집기 동기화로 중지: {}", targetId, j.getId());
+                // [2026-04-21] 감사 로그: 수집기 중지
+                AuditLogger.collectorStopped(targetId, j.getId(), "JDBC");
             });
 
             // 2) 활성화된 수집기: 이미 실행 중이면 설정 갱신을 위해 중지 후 재시작,
@@ -233,6 +340,8 @@ public class TargetContext {
                             log.info("[{}] 파일 수집기 동기화로 (재)시작: {} (hasHeader={}, format={}) → data/{}/{}/positions.dat",
                                     targetId, fConfig.getName(), fConfig.isCsvHasHeader(),
                                     fConfig.getFormat(), targetId, fConfig.getId());
+                            // [2026-04-21] 감사 로그: 수집기 시작 (동기화)
+                            AuditLogger.collectorStarted(targetId, fConfig.getId(), "FILE", fConfig.getName());
                         } catch (Exception e) {
                             log.error("[{}] 파일 수집기 시작 실패: {} - {}", targetId, id, e.getMessage(), e);
                         }
@@ -254,6 +363,8 @@ public class TargetContext {
                             jdbcCollectors.add(jc);
                             log.info("[{}] JDBC 수집기 동기화로 (재)시작: {} → data/{}/{}/watermark.dat",
                                     targetId, jConfig.getName(), targetId, jConfig.getId());
+                            // [2026-04-21] 감사 로그: 수집기 시작 (동기화)
+                            AuditLogger.collectorStarted(targetId, jConfig.getId(), "JDBC", jConfig.getName());
                         } catch (Exception e) {
                             log.error("[{}] JDBC 수집기 시작 실패: {} - {}", targetId, id, e.getMessage(), e);
                         }
@@ -265,12 +376,18 @@ public class TargetContext {
 
     private void deliveryLoop() {
         MDC.put("targetId", targetId);
-        log.info("[{}] 전송 루프 시작", targetId);
+        log.info("[{}] 전송 루프 시작 (rateLimiter={})",
+                targetId, rateLimiter.isEnabled()
+                        ? rateLimiter.getMaxBatchesPerSecond() + "/sec" : "unlimited");
         while (running) {
             try {
                 Batch batch = batchBuilder.nextBatch();
                 if (batch == null)
                     continue;
+
+                // [2026-04-21] Rate Limit 적용 — 설정된 속도 초과 시 대기
+                rateLimiter.acquire();
+
                 rpcClient.send(batch);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -366,6 +483,15 @@ public class TargetContext {
         return targetId;
     }
 
+    // [2026-04-21] AdminServer 목록 표시용
+    public String getEndpoint() {
+        return config.getRpc() != null ? config.getRpc().getEndpoint() : "";
+    }
+
+    public TargetConfig getConfig() {
+        return config;
+    }
+
     public boolean isRpcConnected() {
         return rpcClient != null && rpcClient.isConnected();
     }
@@ -376,5 +502,108 @@ public class TargetContext {
 
     public int getSpoolDepth() {
         return spoolManager != null ? spoolManager.depth() : 0;
+    }
+
+    // [2026-04-21] 수집기 상태·설정 목록 반환 — AdminServer /targets/{id}/collectors 용
+    //              knownCollectors(활성·비활성 전체) 기반으로 조회, 실제 실행 상태를 overlay
+    public synchronized List<java.util.Map<String, Object>> getCollectorInfos() {
+        // 실행 중인 수집기 ID 집합
+        java.util.Set<String> runningFileIds = fileCollectors.stream()
+                .filter(com.icon.agent.collector.FileCollector::isRunning)
+                .map(com.icon.agent.collector.FileCollector::getId)
+                .collect(Collectors.toSet());
+        java.util.Set<String> runningJdbcIds = jdbcCollectors.stream()
+                .filter(com.icon.agent.collector.JdbcCollector::isRunning)
+                .map(com.icon.agent.collector.JdbcCollector::getId)
+                .collect(Collectors.toSet());
+
+        List<java.util.Map<String, Object>> result = new ArrayList<>();
+        for (CollectorConfig c : knownCollectors.values()) {
+            java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("id",      c.getId());
+            m.put("name",    c.getName());
+            m.put("type",    c.getType());
+            m.put("enabled", c.isEnabled());
+            m.put("pollIntervalMs", c.getPollIntervalMs());
+            if ("FILE".equals(c.getType()) && c instanceof com.icon.agent.config.FileCollectorConfig fc) {
+                m.put("running",     runningFileIds.contains(c.getId()));
+                m.put("directory",   fc.getDirectory());
+                m.put("filePattern", fc.getFileNamePattern());
+                m.put("format",      fc.getFormat());
+            } else if ("JDBC".equals(c.getType()) && c instanceof com.icon.agent.config.JdbcCollectorConfig jc) {
+                m.put("running",     runningJdbcIds.contains(c.getId()));
+                m.put("url",         jc.getUrl());
+                m.put("query",       jc.getQuery());
+            } else {
+                m.put("running", false);
+            }
+            result.add(m);
+        }
+        // knownCollectors가 비어있으면 기존 fileCollectors/jdbcCollectors fallback (COLLECTORS_SYNC 미수신 시)
+        if (result.isEmpty()) {
+            for (com.icon.agent.collector.FileCollector fc : fileCollectors) {
+                com.icon.agent.config.FileCollectorConfig c = fc.getConfig();
+                java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+                m.put("id", c.getId()); m.put("name", c.getName()); m.put("type", "FILE");
+                m.put("running", fc.isRunning()); m.put("enabled", c.isEnabled());
+                m.put("pollIntervalMs", c.getPollIntervalMs());
+                m.put("directory", c.getDirectory()); m.put("filePattern", c.getFileNamePattern()); m.put("format", c.getFormat());
+                result.add(m);
+            }
+            for (com.icon.agent.collector.JdbcCollector jc : jdbcCollectors) {
+                com.icon.agent.config.JdbcCollectorConfig c = jc.getConfig();
+                java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+                m.put("id", c.getId()); m.put("name", c.getName()); m.put("type", "JDBC");
+                m.put("running", jc.isRunning()); m.put("enabled", c.isEnabled());
+                m.put("pollIntervalMs", c.getPollIntervalMs());
+                m.put("url", c.getUrl()); m.put("query", c.getQuery());
+                result.add(m);
+            }
+        }
+        return result;
+    }
+
+    public int getCollectorCount() {
+        return fileCollectors.size() + jdbcCollectors.size();
+    }
+
+    // [2026-04-21] CONFIG_UPDATE 수신 시 in-memory TargetConfig 필드 동기화
+    //              config.yaml에 없는 targets.json target도 서버 설정 변경을 반영하기 위해 필요
+    // [2026-04-22] maxBatchesPerSecond 파라미터 추가 + BatchBuilder/BatchRateLimiter 런타임 갱신
+    private void applyConfigUpdate(boolean compress,
+            String tlsKp, String tlsKpw, String tlsTp, String tlsTpw,
+            int qc, int mbs, long mbm, long mbb, int mbps) {
+        RpcConfig rpc = config.getRpc();
+        if (rpc == null) return;
+        rpc.setCompress(compress);
+        if (tlsKp != null || tlsKpw != null || tlsTp != null || tlsTpw != null) {
+            TlsConfig tls = rpc.getTls();
+            if (tls == null) { tls = new TlsConfig(); rpc.setTls(tls); }
+            if (tlsKp  != null) tls.setKeystorePath(tlsKp.isEmpty()  ? null : tlsKp);
+            if (tlsKpw != null) tls.setKeystorePassword(tlsKpw.isEmpty() ? null : tlsKpw);
+            if (tlsTp  != null) tls.setTruststorePath(tlsTp.isEmpty() ? null : tlsTp);
+            if (tlsTpw != null) tls.setTruststorePassword(tlsTpw.isEmpty() ? null : tlsTpw);
+        }
+        if (qc   > 0)  config.setQueueCapacity(qc);
+        if (mbs  > 0)  config.setMaxBatchSize(mbs);
+        if (mbm  > 0)  config.setMaxBatchMs(mbm);
+        if (mbb >= 0)  config.setMaxBatchBytes(mbb);
+        // [2026-04-22] maxBatchesPerSecond: -1은 미지정(변경 없음)
+        if (mbps >= 0) config.setMaxBatchesPerSecond(mbps);
+
+        // [2026-04-22] BatchBuilder/BatchRateLimiter에 변경 값 즉시 반영 (재시작 없이 적용)
+        if (batchBuilder != null && (mbs > 0 || mbm > 0 || mbb >= 0)) {
+            int newSize  = mbs  > 0  ? mbs  : config.getMaxBatchSize();
+            long newMs   = mbm  > 0  ? mbm  : config.getMaxBatchMs();
+            long newBytes = mbb >= 0 ? mbb  : config.getMaxBatchBytes();
+            batchBuilder.updateBatchSettings(newSize, newMs, newBytes);
+        }
+        if (rateLimiter != null && mbps >= 0) {
+            rateLimiter.update(mbps);
+        }
+
+        log.info("[{}] CONFIG_UPDATE 적용 완료 — maxBatchSize={}, maxBatchMs={}, maxBatchBytes={}, maxBatchesPerSecond={}",
+                targetId, config.getMaxBatchSize(), config.getMaxBatchMs(),
+                config.getMaxBatchBytes(), config.getMaxBatchesPerSecond());
     }
 }

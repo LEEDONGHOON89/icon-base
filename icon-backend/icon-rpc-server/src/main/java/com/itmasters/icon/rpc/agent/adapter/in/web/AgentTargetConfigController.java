@@ -82,10 +82,12 @@ public class AgentTargetConfigController {
         payload.put("compress",         cfg.isCompress());
         payload.put("tlsKeystorePath",  cfg.getTlsKeystorePath());
         payload.put("tlsTruststorePath",cfg.getTlsTruststorePath());
-        payload.put("queueCapacity",    cfg.getQueueCapacity());
-        payload.put("maxBatchSize",     cfg.getMaxBatchSize());
-        payload.put("maxBatchMs",       cfg.getMaxBatchMs());
-        payload.put("maxBatchBytes",    cfg.getMaxBatchBytes());
+        payload.put("queueCapacity",       cfg.getQueueCapacity());
+        payload.put("maxBatchSize",        cfg.getMaxBatchSize());
+        payload.put("maxBatchMs",          cfg.getMaxBatchMs());
+        payload.put("maxBatchBytes",       cfg.getMaxBatchBytes());
+        // [2026-04-22] maxBatchesPerSecond 추가
+        payload.put("maxBatchesPerSecond", cfg.getMaxBatchesPerSecond());
         return wsHandler.pushConfigUpdate(agentId, payload);
     }
 }

@@ -103,6 +103,10 @@ public class JdbcCollector {
         return config.getId();
     }
 
+    // [2026-04-21] AdminServer 수집기 상태 조회용
+    public JdbcCollectorConfig getConfig() { return config; }
+    public boolean isRunning() { return running; }
+
     public void stop() {
         running = false;
         scheduler.shutdownNow();

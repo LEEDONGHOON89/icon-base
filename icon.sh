@@ -30,11 +30,13 @@ DB_USER="postgres"
 DB_PASS="1234"
 export PGPASSWORD="$DB_PASS"
 
-# ── JVM 옵션 ─────────────────────────────────────────────────
+# [2026-04-21] JVM 옵션 경량화 (백엔드 전용 — 에이전트는 icon-agent.bat / icon-agent.ps1 참조)
 JAVA_OPTS=(
-    -XX:MaxDirectMemorySize=8192m
-    -Xmx2048m
+    -Xms256m
+    -Xmx512m
     -XX:+UseG1GC
+    -XX:MaxGCPauseMillis=200
+    -XX:G1ReservePercent=10
     -XX:+HeapDumpOnOutOfMemoryError
     -XX:HeapDumpPath="$LOG_DIR/heapdump"
     -Dfile.encoding=UTF-8
@@ -302,6 +304,7 @@ run_migrations() {
 
     if [ ! -d "$MIGRATION_DIR" ]; then
         info "마이그레이션 디렉토리 없음: $MIGRATION_DIR (건너뜀)"
+        run_inline_migrations
         return
     fi
 
@@ -310,6 +313,7 @@ run_migrations() {
 
     if [ -z "$sql_files" ]; then
         info "적용할 마이그레이션 파일 없음"
+        run_inline_migrations
         return
     fi
 
@@ -352,6 +356,88 @@ run_migrations() {
     done
 
     info "마이그레이션 완료 (신규: $applied, 기존: $skipped)"
+
+    # [2026-04-21] 파일 기반 마이그레이션 이후 인라인 마이그레이션 추가 적용
+    run_inline_migrations
+}
+
+# ─────────────────────────────────────────────────────────────
+# 3-1. 인라인 마이그레이션
+# SQL 파일이 서버에 없는 경우에도 icon.sh 단독으로 스키마 변경을 적용할 수 있도록
+# 버전별 DDL을 직접 내장한다.
+# 새 마이그레이션 추가 시: apply_inline_migration 블록을 순서대로 추가할 것.
+# ─────────────────────────────────────────────────────────────
+
+# [2026-04-21] 인라인 마이그레이션 헬퍼
+# 사용법: apply_inline_migration "1.0.6" "V1_0_6__desc" "SQL 문장"
+apply_inline_migration() {
+    local version="$1"
+    local filename="$2"
+    local sql="$3"
+    local psql_cmd="psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME"
+
+    local already_applied
+    already_applied=$($psql_cmd -tAc "SELECT COUNT(*) FROM icon_migrations WHERE version='$version'" 2>/dev/null || echo "0")
+
+    if [ "$already_applied" = "1" ]; then
+        info "  SKIP  $filename (이미 적용됨)"
+        return
+    fi
+
+    info "  APPLY $filename (inline)"
+    if $psql_cmd -c "$sql" &>/dev/null; then
+        $psql_cmd -c "
+            INSERT INTO icon_migrations (version, filename, checksum)
+            VALUES ('$version', '$filename', 'inline')
+            ON CONFLICT (version) DO NOTHING;
+        " &>/dev/null
+        info "  ✓     $filename 적용 완료"
+    else
+        error "인라인 마이그레이션 실패: $filename"
+        exit 1
+    fi
+}
+
+run_inline_migrations() {
+    local psql_cmd="psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME"
+
+    # icon_migrations 테이블이 없으면 인라인 적용 불가 — 건너뜀
+    local tbl_exists
+    tbl_exists=$($psql_cmd -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_name='icon_migrations'" 2>/dev/null || echo "0")
+    if [ "$tbl_exists" != "1" ]; then
+        return
+    fi
+
+    # ── V1_0_6 : ds_database_config — 증분 컬럼 초기값 추가 ──────────────
+    # [2026-04-21] 첫 수집 시 하이워터마크 시작점 설정 필드
+    apply_inline_migration "1.0.6" \
+        "V1_0_6__add_incremental_column_initial_value" \
+        "ALTER TABLE public.ds_database_config
+             ADD COLUMN IF NOT EXISTS incremental_column_initial_value VARCHAR(200);"
+
+    # ── V1_0_7 : ds_file_system_config — 에이전트 폴링 설정 추가 ─────────
+    # [2026-04-21] 에이전트가 파일 폴링 시 사용하는 간격·크기 설정
+    #   poll_interval_ms   : 폴링 간격 (ms), NULL → scan_interval_minutes × 60000
+    #   max_lines_per_poll : 폴링 1회 최대 라인 수, NULL → 1000
+    #   max_record_bytes   : 단일 레코드 최대 바이트, NULL → 524288 (512 KB)
+    apply_inline_migration "1.0.7" \
+        "V1_0_7__add_poll_settings_to_file_system_config" \
+        "ALTER TABLE public.ds_file_system_config
+             ADD COLUMN IF NOT EXISTS poll_interval_ms   BIGINT,
+             ADD COLUMN IF NOT EXISTS max_lines_per_poll INTEGER,
+             ADD COLUMN IF NOT EXISTS max_record_bytes   INTEGER;"
+
+    # ── V1_0_8 : ds_database_config — 에이전트 폴링 설정 추가 ────────────
+    # [2026-04-21] 에이전트가 JDBC 폴링 시 사용하는 간격·크기 설정
+    #   poll_interval_ms   : 폴링 간격 (ms), NULL → 300000 (5분)
+    #   max_lines_per_poll : 폴링 1회 최대 행 수, NULL → 1000
+    #   max_record_bytes   : 단일 레코드 최대 바이트, NULL → 524288 (512 KB)
+    apply_inline_migration "1.0.8" \
+        "V1_0_8__add_poll_settings_to_database_config" \
+        "ALTER TABLE public.ds_database_config
+             ADD COLUMN IF NOT EXISTS poll_interval_ms   BIGINT,
+             ADD COLUMN IF NOT EXISTS max_lines_per_poll INTEGER,
+             ADD COLUMN IF NOT EXISTS max_record_bytes   INTEGER;"
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -528,6 +614,29 @@ cmd_rebuild() {
     info "재빌드 및 기동 완료"
 }
 
+# [2026-04-21] 프론트엔드 단독 제어
+cmd_start_fe() {
+    section "프론트엔드 기동"
+    start_frontend
+    echo ""
+    info "프론트엔드 기동 완료 → http://localhost:5160"
+}
+
+cmd_stop_fe() {
+    section "프론트엔드 중지"
+    stop_frontend
+    info "프론트엔드 중지 완료"
+}
+
+cmd_restart_fe() {
+    section "프론트엔드 재기동"
+    stop_frontend
+    sleep 1
+    start_frontend
+    echo ""
+    info "프론트엔드 재기동 완료 → http://localhost:5160"
+}
+
 cmd_status() {
     section "ICON 플랫폼 상태"
     local be_pid fe_pid
@@ -556,21 +665,29 @@ cmd_status() {
 
 # ─────────────────────────────────────────────────────────────
 case "${1:-}" in
-    start)   cmd_start   ;;
-    stop)    cmd_stop    ;;
-    restart) cmd_restart ;;
-    rebuild) cmd_rebuild ;;
-    status)  cmd_status  ;;
-    setup)   cmd_setup   ;;
+    start)      cmd_start      ;;
+    stop)       cmd_stop       ;;
+    restart)    cmd_restart    ;;
+    rebuild)    cmd_rebuild    ;;
+    status)     cmd_status     ;;
+    setup)      cmd_setup      ;;
+    # [2026-04-21] 프론트엔드 단독 제어
+    start-fe)   cmd_start_fe   ;;
+    stop-fe)    cmd_stop_fe    ;;
+    restart-fe) cmd_restart_fe ;;
     *)
-        echo "Usage: $0 {start|stop|restart|rebuild|status|setup}"
+        echo "Usage: $0 {start|stop|restart|rebuild|status|setup|start-fe|stop-fe|restart-fe}"
         echo ""
-        echo "  start    의존성 확인 → DB 초기화 → 마이그레이션 → 백엔드+프론트 기동"
-        echo "  stop     백엔드+프론트 종료"
-        echo "  restart  재시작"
-        echo "  rebuild  소스 재빌드 후 재시작"
-        echo "  status   실행 상태 확인"
-        echo "  setup    환경 설정만 실행 (기동 없이)"
+        echo "  start       의존성 확인 → DB 초기화 → 마이그레이션 → 백엔드+프론트 기동"
+        echo "  stop        백엔드+프론트 종료"
+        echo "  restart     재시작"
+        echo "  rebuild     소스 재빌드 후 재시작"
+        echo "  status      실행 상태 확인"
+        echo "  setup       환경 설정만 실행 (기동 없이)"
+        echo ""
+        echo "  start-fe    프론트엔드만 기동"
+        echo "  stop-fe     프론트엔드만 중지"
+        echo "  restart-fe  프론트엔드만 재기동"
         exit 1
         ;;
 esac

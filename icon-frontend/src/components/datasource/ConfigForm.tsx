@@ -68,11 +68,18 @@ export default function ConfigForm({ dataSource }: Props) {
         hasHeader: config.fileSystem.hasHeader ?? !isRealtime,
         skipLines: config.fileSystem.skipLines,
         processingStrategy: config.fileSystem.processingStrategy,
-        scanIntervalMinutes: config.fileSystem.scanIntervalMinutes ?? (isRealtime ? 5 : 60),
         moveProcessedFiles: config.fileSystem.moveProcessedFiles,
         processedFilesDirectory: config.fileSystem.processedFilesDirectory,
         // [2026-03-12] 에이전트 연결 정보 초기 로드
         agentId: config.fileSystem.agentId || undefined,
+        // [2026-04-22] 폴링 간격(초): pollIntervalMs(ms)→초 변환 우선, 없으면 scanIntervalMinutes(초) 사용
+        // FILE_SYSTEM_REALTIME은 통합 폴링 간격(초)을 scanIntervalMinutes에 저장한다.
+        pollIntervalMs: config.fileSystem.pollIntervalMs ?? undefined,
+        scanIntervalMinutes: config.fileSystem.pollIntervalMs
+          ? Math.round(config.fileSystem.pollIntervalMs / 1000)
+          : (config.fileSystem.scanIntervalMinutes ?? (isRealtime ? 60 : 3600)),
+        maxLinesPerPoll: config.fileSystem.maxLinesPerPoll ?? undefined,
+        maxRecordBytes: config.fileSystem.maxRecordBytes ?? undefined,
       });
     }
     if (dataSource.sourceType === "DATABASE" && config.database) {
@@ -97,13 +104,23 @@ export default function ConfigForm({ dataSource }: Props) {
         batchSize: config.database.batchSize || 1000,
         // [2026-03-13] 에이전트 연결 정보 초기 로드
         agentId: config.database.agentId || undefined,
+        // [2026-04-21] 폴링 설정 초기 로드
+        pollIntervalMs: config.database.pollIntervalMs ?? undefined,
+        maxLinesPerPoll: config.database.maxLinesPerPoll ?? undefined,
+        maxRecordBytes: config.database.maxRecordBytes ?? undefined,
       });
     }
   }, [config, dataSource.sourceType]);
 
   const saveMutation = useMutation({
     mutationFn: () => {
-      const payload = isFileSystemType ? { fileSystem: fs } : { database: db };
+      // [2026-04-22] FILE_SYSTEM_REALTIME: 폴링 간격을 초 단위로 통합 관리
+      // scanIntervalMinutes(초) → pollIntervalMs(ms) 자동 계산하여 함께 저장
+      // 에이전트/백엔드 양쪽이 동일 값을 사용한다.
+      const fileSystemPayload: FileSystemConfig = isRealtime
+        ? { ...fs, pollIntervalMs: (fs.scanIntervalMinutes ?? 60) * 1000 }
+        : fs;
+      const payload = isFileSystemType ? { fileSystem: fileSystemPayload } : { database: db };
       return updateDataSourceConfig(dataSource.dataSourceId, payload);
     },
     onSuccess: () => {
@@ -204,12 +221,13 @@ export default function ConfigForm({ dataSource }: Props) {
                 onChange={(v) => setFs({ ...fs, filePattern: v })}
                 placeholder="예: *.log  또는  app-*.csv"
               />
+              {/* [2026-04-22] 폴링 간격: 초 단위 통합. 에이전트/백엔드 모두 이 값 사용 */}
               <LabeledInput
-                label="폴링 간격(초)"
+                label="폴링 간격 (초)"
                 type="number"
-                value={String(fs.scanIntervalMinutes ?? "5")}
-                onChange={(v) => setFs({ ...fs, scanIntervalMinutes: v ? Number(v) : 5 })}
-                placeholder="기본값: 5초"
+                value={String(fs.scanIntervalMinutes ?? "60")}
+                onChange={(v) => setFs({ ...fs, scanIntervalMinutes: v ? Number(v) : 60 })}
+                placeholder="기본값: 60초 (1분)"
               />
             </div>
           </div>
@@ -261,6 +279,40 @@ export default function ConfigForm({ dataSource }: Props) {
               )}
             </div>
           </div>
+
+          {/* [2026-04-22] 에이전트 수집 설정 (에이전트 선택 시만 표시) — 폴링 간격은 기본 설정과 통합 */}
+          {fs.agentId && (
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-3">에이전트 수집 설정</h4>
+              <p className="text-xs text-gray-500 mb-3">
+                에이전트가 파일을 폴링할 때 적용되는 세부 설정입니다. 폴링 간격은 위 "기본 설정"의 값을 공통으로 사용합니다.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">폴 당 최대 처리 라인 수</label>
+                  <input
+                    type="number"
+                    className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                    placeholder="예: 10000"
+                    value={fs.maxLinesPerPoll ?? ""}
+                    onChange={(e) => setFs({ ...fs, maxLinesPerPoll: e.target.value ? Number(e.target.value) : undefined })}
+                  />
+                  <p className="text-xs text-gray-400 mt-0.5">1회 폴링 시 읽을 최대 줄 수. 미입력 시 기본값 10,000 적용</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">최대 레코드 크기 (bytes)</label>
+                  <input
+                    type="number"
+                    className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                    placeholder="예: 65536 (64KB).  0 = 제한 없음"
+                    value={fs.maxRecordBytes ?? ""}
+                    onChange={(e) => setFs({ ...fs, maxRecordBytes: e.target.value ? Number(e.target.value) : undefined })}
+                  />
+                  <p className="text-xs text-gray-400 mt-0.5">줄 크기가 이 값을 초과하면 잘라냅니다. 0 입력 시 제한 없음</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* 파일 형식 */}
           <div>
@@ -496,6 +548,35 @@ export default function ConfigForm({ dataSource }: Props) {
                 onChange={(v) => setDb({ ...db, batchSize: v ? Number(v) : undefined })}
                 placeholder="기본값: 1000"
               />
+              {/* [2026-04-22] 폴링 간격(초) — 에이전트/백엔드 직접 폴링 모두 적용 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  폴링 간격 (초)
+                </label>
+                <input
+                  type="number"
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  placeholder="예: 300 (5분)"
+                  value={db.pollIntervalMs != null ? Math.round(db.pollIntervalMs / 1000) : ""}
+                  onChange={(e) => setDb({ ...db, pollIntervalMs: e.target.value ? Number(e.target.value) * 1000 : undefined })}
+                />
+                <p className="text-xs text-gray-400 mt-0.5">미입력 시 기본값 300초 (5분) 적용</p>
+              </div>
+              {/* [2026-04-22] 폴 당 최대 처리 행 수 — 에이전트/백엔드 모두 적용 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  폴 당 최대 처리 행 수
+                  <span className="ml-2 text-xs font-normal text-gray-400">(maxLinesPerPoll)</span>
+                </label>
+                <input
+                  type="number"
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  placeholder="예: 1000"
+                  value={db.maxLinesPerPoll ?? ""}
+                  onChange={(e) => setDb({ ...db, maxLinesPerPoll: e.target.value ? Number(e.target.value) : undefined })}
+                />
+                <p className="text-xs text-gray-400 mt-0.5">1회 폴링 시 가져올 최대 행 수. 미입력 시 기본값 1,000 적용</p>
+              </div>
             </div>
           </div>
 
@@ -534,10 +615,36 @@ export default function ConfigForm({ dataSource }: Props) {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
                     <span className="text-xs text-green-700">
-                      저장 시 선택된 에이전트에 JDBC 수집기가 자동 생성/업데이트되고 동기화됩니다.
+                      저장 시 선택된 에이전트에 전체 수집기 스냅샷이 자동 동기화됩니다.
                     </span>
                   </div>
                 </div>
+              )}
+              {/* [2026-04-22] 에이전트 수집 설정 — 폴링 간격은 "적재 설정"과 통합 */}
+              {db.agentId && (
+                <>
+                  <div className="md:col-span-2">
+                    <div className="flex items-start gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-md">
+                      <svg className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="text-xs text-blue-700">
+                        폴링 간격 · 최대 처리 행 수는 위 <strong>적재 설정</strong>에서 공통으로 설정합니다.
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">최대 레코드 크기 (bytes)</label>
+                    <input
+                      type="number"
+                      className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                      placeholder="예: 65536 (64KB).  0 = 제한 없음"
+                      value={db.maxRecordBytes ?? ""}
+                      onChange={(e) => setDb({ ...db, maxRecordBytes: e.target.value ? Number(e.target.value) : undefined })}
+                    />
+                    <p className="text-xs text-gray-400 mt-0.5">레코드가 이 값을 초과하면 잘라냅니다. 0 입력 시 제한 없음</p>
+                  </div>
+                </>
               )}
             </div>
           </div>

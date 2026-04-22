@@ -51,6 +51,15 @@ public class EngineDsFileSystemConfigEntity {
     @Column(name = "agent_id", length = 100)
     private String agentId;
 
+    // [2026-04-22] 백엔드 직접 수집 시 적용 — 에이전트와 동일한 제한 기준
+    /** 폴 당 최대 처리 라인 수. NULL → 기본값 1000 */
+    @Column(name = "max_lines_per_poll")
+    private Integer maxLinesPerPoll;
+
+    /** 레코드 최대 바이트 크기. NULL 또는 0 → 제한 없음 */
+    @Column(name = "max_record_bytes")
+    private Integer maxRecordBytes;
+
     public static EngineDsFileSystemConfigEntity of(String id, String dataSourceId, String watchDirectory,
                                                     String filePattern, String fileEncoding, String delimiter,
                                                     Boolean hasHeader, Boolean isActive,

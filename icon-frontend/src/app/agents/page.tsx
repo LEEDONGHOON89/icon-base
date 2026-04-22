@@ -19,13 +19,16 @@ import { toast } from "react-hot-toast";
 import {
   Agent,
   AgentSession,
+  AgentSnapshotItem,
   AgentStatus,
   AgentTargetConfig,
   AgentTargetConfigUpdateRequest,
   fetchAgentSessions,
+  fetchAgentSnapshot,
   fetchAgentTargetConfigs,
   fetchAgents,
   pushAgentTargetConfig,
+  syncAgent,
   updateAgentTargetConfig,
 } from "./api";
 
@@ -147,6 +150,8 @@ function TargetConfigPanel({ agent, onClose }: { agent: Agent; onClose: () => vo
       maxBatchSize:         cfg.maxBatchSize,
       maxBatchMs:           cfg.maxBatchMs,
       maxBatchBytes:        cfg.maxBatchBytes,
+      // [2026-04-22] 초당 최대 배치 전송 수
+      maxBatchesPerSecond:  cfg.maxBatchesPerSecond,
     });
   };
 
@@ -227,22 +232,16 @@ function TargetConfigPanel({ agent, onClose }: { agent: Agent; onClose: () => vo
             <p className="text-sm text-gray-400 text-center py-8">설정 정보가 없습니다.</p>
           ) : (
             <>
-              {/* Config selector */}
+              {/* [2026-04-22] 에이전트당 타겟 1개 정책 — 셀렉터 제거
+                  기존 데이터에 다수 타겟이 있는 경우 경고 표시 */}
               {configs.length > 1 && (
-                <div className="mb-4 flex gap-2 flex-wrap">
-                  {configs.map((c) => (
-                    <button
-                      key={c.targetConfigId}
-                      onClick={() => { setEditingId(c.targetConfigId); initForm(c); }}
-                      className={`px-3 py-1 rounded-lg text-xs font-medium border transition-colors ${
-                        editingId === c.targetConfigId
-                          ? "bg-indigo-600 text-white border-indigo-600"
-                          : "border-gray-300 text-gray-600 hover:bg-gray-50"
-                      }`}
-                    >
-                      {c.targetId}
-                    </button>
-                  ))}
+                <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-2">
+                  <span className="text-yellow-500 text-sm mt-0.5">⚠</span>
+                  <p className="text-xs text-yellow-700">
+                    이 에이전트에 타겟이 {configs.length}개 등록되어 있습니다.
+                    에이전트당 타겟은 1개만 허용됩니다. 첫 번째 타겟({configs[0].targetId})만 표시됩니다.
+                    불필요한 타겟을 삭제해 주세요.
+                  </p>
                 </div>
               )}
 
@@ -266,10 +265,12 @@ function TargetConfigPanel({ agent, onClose }: { agent: Agent; onClose: () => vo
                   <div className="bg-gray-50 rounded-xl p-4 space-y-3">
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">배치 정책</p>
                     <div className="grid grid-cols-2 gap-3">
-                      {field("Queue Capacity", "queueCapacity", "number")}
+                      {field("Queue Capacity (건)", "queueCapacity", "number")}
                       {field("Max Batch Size (건)", "maxBatchSize", "number")}
                       {field("Max Batch Ms (ms)", "maxBatchMs", "number")}
                       {field("Max Batch Bytes (0=무제한)", "maxBatchBytes", "number")}
+                      {/* [2026-04-22] 초당 최대 배치 전송 수 */}
+                      {field("Max Batches/초 (0=무제한)", "maxBatchesPerSecond", "number")}
                     </div>
                   </div>
                 </div>
@@ -310,14 +311,170 @@ function TargetConfigPanel({ agent, onClose }: { agent: Agent; onClose: () => vo
   );
 }
 
+// ── Snapshot panel ───────────────────────────────────────
+// [2026-04-21] 에이전트 수집기 스냅샷 조회 + 즉시 동기화 패널
+function SnapshotPanel({ agent, onClose }: { agent: Agent; onClose: () => void }) {
+  const queryClient = useQueryClient();
+
+  const { data: snapshot = [], isLoading, refetch } = useQuery({
+    queryKey: ["agentSnapshot", agent.agentId],
+    queryFn: () => fetchAgentSnapshot(agent.agentId),
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: () => syncAgent(agent.agentId),
+    onSuccess: (data) => {
+      if (data.connected) {
+        toast.success(`수집기 ${data.snapshotSize}개 동기화 완료`);
+      } else {
+        toast(`에이전트 오프라인 — 연결 시 자동 동기화됩니다. (${data.snapshotSize}개 수집기)`, { icon: "⚠️" });
+      }
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["agents"] });
+    },
+    onError: () => toast.error("동기화에 실패했습니다."),
+  });
+
+  const typeLabel = (type: string) =>
+    type === "FILE" ? "파일" : type === "JDBC" ? "JDBC" : type;
+
+  const typeBadge = (type: string) =>
+    type === "FILE"
+      ? "bg-blue-100 text-blue-700"
+      : type === "JDBC"
+      ? "bg-purple-100 text-purple-700"
+      : "bg-gray-100 text-gray-600";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">수집기 스냅샷</h2>
+            <p className="text-xs text-gray-500 mt-0.5">{agent.displayName || agent.agentId}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <StatusBadge status={agent.status} />
+            <button
+              onClick={() => syncMutation.mutate()}
+              disabled={syncMutation.isPending}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+            >
+              <ArrowPathIcon className={`h-3.5 w-3.5 ${syncMutation.isPending ? "animate-spin" : ""}`} />
+              {syncMutation.isPending ? "동기화 중…" : "즉시 동기화"}
+            </button>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl font-bold ml-1">×</button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="overflow-y-auto flex-1 px-6 py-4">
+          {isLoading ? (
+            <p className="text-sm text-gray-400 text-center py-8">로딩 중…</p>
+          ) : snapshot.length === 0 ? (
+            <div className="text-center py-12 text-gray-400">
+              <ServerStackIcon className="h-10 w-10 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">등록된 수집기가 없습니다.</p>
+              <p className="text-xs mt-1 text-gray-300">데이터소스 연결 설정에서 에이전트 ID를 지정하면 자동으로 수집기가 생성됩니다.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {snapshot.map((item: AgentSnapshotItem) => (
+                <div key={item.id} className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${typeBadge(item.type)}`}>
+                        {typeLabel(item.type)}
+                      </span>
+                      <span className="font-medium text-sm text-gray-800">{item.name}</span>
+                      <span className="font-mono text-xs text-gray-400">{item.id}</span>
+                    </div>
+                    <span className={`text-xs font-medium ${item.enabled ? "text-emerald-600" : "text-gray-400"}`}>
+                      {item.enabled ? "활성" : "비활성"}
+                    </span>
+                  </div>
+                  <dl className="grid grid-cols-3 gap-x-4 gap-y-1 text-xs text-gray-600">
+                    <div>
+                      <dt className="text-gray-400">폴링 간격</dt>
+                      <dd>{(item.pollIntervalMs / 1000).toFixed(0)}초</dd>
+                    </div>
+                    <div>
+                      <dt className="text-gray-400">최대 라인/회</dt>
+                      <dd>{item.maxLinesPerPoll.toLocaleString()}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-gray-400">최대 레코드 크기</dt>
+                      <dd>{(item.maxRecordBytes / 1024).toFixed(0)} KB</dd>
+                    </div>
+                    {item.type === "FILE" && (
+                      <>
+                        <div>
+                          <dt className="text-gray-400">경로</dt>
+                          <dd className="truncate font-mono">{item.path || "-"}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-400">파일 패턴</dt>
+                          <dd className="font-mono">{item.file || "-"}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-400">포맷</dt>
+                          <dd>{item.format || "-"}</dd>
+                        </div>
+                      </>
+                    )}
+                    {item.type === "JDBC" && (
+                      <>
+                        <div className="col-span-3">
+                          <dt className="text-gray-400">JDBC URL</dt>
+                          <dd className="truncate font-mono text-gray-700">{item.url || "-"}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-400">증분 컬럼</dt>
+                          <dd className="font-mono">{item.field1 || "-"}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-400">컬럼 타입</dt>
+                          <dd>{item.field1_type || "-"}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-gray-400">초기값</dt>
+                          <dd className="font-mono">{item.field1_value || "-"}</dd>
+                        </div>
+                      </>
+                    )}
+                  </dl>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between">
+          <p className="text-xs text-gray-400">
+            총 {snapshot.length}개 수집기 등록됨
+          </p>
+          <p className="text-xs text-gray-400">
+            {agent.status === "ACTIVE"
+              ? "에이전트 연결 중 — 동기화 버튼으로 즉시 적용 가능"
+              : "에이전트 오프라인 — 다음 연결 시 자동 동기화"}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Agent card ───────────────────────────────────────────
 function AgentCard({
-  agent, isSelected, onSelect, onSessionClick,
+  agent, isSelected, onSelect, onSessionClick, onSnapshotClick,
 }: {
   agent: Agent;
   isSelected: boolean;
   onSelect: (a: Agent) => void;
   onSessionClick: (a: Agent) => void;
+  onSnapshotClick: (a: Agent) => void;
 }) {
   return (
     <div
@@ -370,6 +527,14 @@ function AgentCard({
           <ClockIcon className="h-3.5 w-3.5" />
           세션 이력
         </button>
+        {/* [2026-04-21] 수집기 스냅샷 버튼 */}
+        <button
+          onClick={(e) => { e.stopPropagation(); onSnapshotClick(agent); }}
+          className="text-xs text-emerald-600 hover:text-emerald-800 font-medium flex items-center gap-1"
+        >
+          <ArrowPathIcon className="h-3.5 w-3.5" />
+          수집기
+        </button>
         <span className="text-xs text-gray-400 flex items-center gap-1">
           타겟 설정 <ChevronRightIcon className="h-3 w-3" />
         </span>
@@ -383,6 +548,8 @@ export default function AgentsPage() {
   const queryClient = useQueryClient();
   const [sessionAgent, setSessionAgent] = useState<Agent | null>(null);
   const [configAgent, setConfigAgent] = useState<Agent | null>(null);
+  // [2026-04-21] 수집기 스냅샷 패널 상태
+  const [snapshotAgent, setSnapshotAgent] = useState<Agent | null>(null);
   const [statusFilter, setStatusFilter] = useState<AgentStatus | "ALL">("ALL");
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -499,6 +666,7 @@ export default function AgentsPage() {
               isSelected={configAgent?.agentId === agent.agentId}
               onSelect={setConfigAgent}
               onSessionClick={setSessionAgent}
+              onSnapshotClick={setSnapshotAgent}
             />
           ))}
         </div>
@@ -510,6 +678,10 @@ export default function AgentsPage() {
       )}
       {configAgent && (
         <TargetConfigPanel agent={configAgent} onClose={() => setConfigAgent(null)} />
+      )}
+      {/* [2026-04-21] 수집기 스냅샷 패널 */}
+      {snapshotAgent && (
+        <SnapshotPanel agent={snapshotAgent} onClose={() => setSnapshotAgent(null)} />
       )}
     </div>
   );

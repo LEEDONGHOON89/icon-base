@@ -64,6 +64,10 @@ public class AgentTargetConfigEntity {
     @Column(name = "max_batch_bytes", nullable = false)
     private long maxBatchBytes = 1048576L;
 
+    // [2026-04-22] 초당 최대 배치 전송 수 (0 = 무제한)
+    @Column(name = "max_batches_per_second", nullable = false)
+    private int maxBatchesPerSecond = 10;
+
     @Column(name = "is_active", nullable = false)
     private boolean isActive = true;
 
@@ -72,7 +76,9 @@ public class AgentTargetConfigEntity {
                                                   String tlsKeystorePath, String tlsKeystorePassword,
                                                   String tlsTruststorePath, String tlsTruststorePassword,
                                                   int queueCapacity, int maxBatchSize,
-                                                  long maxBatchMs, long maxBatchBytes) {
+                                                  long maxBatchMs, long maxBatchBytes,
+                                                  // [2026-04-22] maxBatchesPerSecond 추가
+                                                  int maxBatchesPerSecond) {
         AgentTargetConfigEntity e = new AgentTargetConfigEntity();
         e.targetConfigId = targetConfigId;
         e.agentId = agentId;
@@ -87,6 +93,7 @@ public class AgentTargetConfigEntity {
         e.maxBatchSize = maxBatchSize;
         e.maxBatchMs = maxBatchMs;
         e.maxBatchBytes = maxBatchBytes;
+        e.maxBatchesPerSecond = maxBatchesPerSecond;
         e.isActive = true;
         return e;
     }
@@ -94,7 +101,9 @@ public class AgentTargetConfigEntity {
     public void update(String rpcEndpoint, boolean compress,
                        String tlsKeystorePath, String tlsKeystorePassword,
                        String tlsTruststorePath, String tlsTruststorePassword,
-                       int queueCapacity, int maxBatchSize, long maxBatchMs, long maxBatchBytes) {
+                       int queueCapacity, int maxBatchSize, long maxBatchMs, long maxBatchBytes,
+                       // [2026-04-22] maxBatchesPerSecond 추가
+                       int maxBatchesPerSecond) {
         this.rpcEndpoint = rpcEndpoint;
         this.compress = compress;
         this.tlsKeystorePath = tlsKeystorePath;
@@ -105,6 +114,7 @@ public class AgentTargetConfigEntity {
         this.maxBatchSize = maxBatchSize;
         this.maxBatchMs = maxBatchMs;
         this.maxBatchBytes = maxBatchBytes;
+        this.maxBatchesPerSecond = maxBatchesPerSecond;
     }
 
     public void deactivate() { this.isActive = false; }

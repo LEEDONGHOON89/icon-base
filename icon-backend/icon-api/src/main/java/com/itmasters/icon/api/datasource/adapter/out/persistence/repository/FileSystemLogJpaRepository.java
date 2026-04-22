@@ -2,6 +2,9 @@ package com.itmasters.icon.api.datasource.adapter.out.persistence.repository;
 
 import com.itmasters.icon.api.datasource.adapter.out.persistence.entity.FileSystemLogEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 
@@ -27,6 +30,11 @@ public interface FileSystemLogJpaRepository extends JpaRepository<FileSystemLogE
      * 특정 설정 ID의 처리 로그 목록 조회 (최신순)
      */
     List<FileSystemLogEntity> findByDsFileSystemConfigIdOrderByProcessedAtDesc(String dsFileSystemConfigId);
+
+    // [2026-04-22] 수집 초기화 — 특정 설정의 처리 로그 전체 삭제 (재처리 허용)
+    @Modifying
+    @Query("DELETE FROM FileSystemLogEntity l WHERE l.dsFileSystemConfigId = :configId")
+    int deleteByDsFileSystemConfigId(@Param("configId") String configId);
 
     /**
      * 특정 설정 ID의 성공한 처리 로그만 조회 - QueryDSL로 구현

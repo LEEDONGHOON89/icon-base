@@ -39,6 +39,10 @@ public class DataSourceConfigDto {
         private String lastErrorMessage;
         // [2026-03-12] FILE_SYSTEM_REALTIME → 에이전트 연결 정보 (UI에서 에이전트 선택 시 설정)
         private String agentId;
+        // [2026-04-21] 에이전트 폴링 설정
+        private Long pollIntervalMs;
+        private Integer maxLinesPerPoll;
+        private Integer maxRecordBytes;
     }
 
     @Data
@@ -71,6 +75,10 @@ public class DataSourceConfigDto {
         private String lastErrorMessage;
         // [2026-03-13] DATABASE → 에이전트 연결 정보 (에이전트가 JDBC 폴링 후 Push하는 경우)
         private String agentId;
+        // [2026-04-21] 에이전트 폴링 설정
+        private Long pollIntervalMs;
+        private Integer maxLinesPerPoll;
+        private Integer maxRecordBytes;
     }
 }
 

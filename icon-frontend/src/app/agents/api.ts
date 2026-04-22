@@ -76,6 +76,8 @@ export interface AgentTargetConfig {
   maxBatchSize: number;
   maxBatchMs: number;
   maxBatchBytes: number;
+  // [2026-04-22] 초당 최대 배치 전송 수
+  maxBatchesPerSecond: number;
   isActive: boolean;
   createdAt: string | null;
   updatedAt: string | null;
@@ -92,6 +94,8 @@ export interface AgentTargetConfigUpdateRequest {
   maxBatchSize: number;
   maxBatchMs: number;
   maxBatchBytes: number;
+  // [2026-04-22] 초당 최대 배치 전송 수
+  maxBatchesPerSecond: number;
 }
 
 export const fetchAgentTargetConfigs = async (
@@ -123,137 +127,53 @@ export const pushAgentTargetConfig = async (
   return res.data;
 };
 
-// ── Collectors (에이전트 데이터소스) ────────────────────────
-export interface CollectorFileDetail {
-  directory: string;
-  fileNamePattern: string;
-  fileFormat: string;
-  csvHasHeader: boolean;
-  csvDelimiter: string;
-  csvColumns: string | null;
-  charset: string;
-}
+// ── Snapshot (Phase 3) ─────────────────────────────────────
+// [2026-04-21] 에이전트 스냅샷 — ds_file_system_config / ds_database_config 기반
 
-export interface CollectorJdbcDetail {
-  url: string;
-  username: string;
-  password: string;
-  query: string;
-  field1: string;
-  field1Type: string;
-  field1InitialValue: string | null;
-  field2: string | null;
-  field2Type: string | null;
-  field2InitialValue: string | null;
-}
-
-export interface AgentCollector {
-  collectorConfigId: string;
-  targetConfigId: string;
-  collectorType: "FILE" | "JDBC";
+export interface AgentSnapshotItem {
+  id: string;
+  type: "FILE" | "JDBC";
   name: string;
   enabled: boolean;
   pollIntervalMs: number;
   maxLinesPerPoll: number;
   maxRecordBytes: number;
-  createdAt: string | null;
-  updatedAt: string | null;
-  fileDetail?: CollectorFileDetail | null;
-  jdbcDetail?: CollectorJdbcDetail | null;
-}
-
-export interface AgentCollectorCreateRequest {
-  collectorType: "FILE" | "JDBC";
-  name: string;
-  enabled?: boolean;
-  pollIntervalMs?: number;
-  maxLinesPerPoll?: number;
-  maxRecordBytes?: number;
-  directory?: string;
-  fileNamePattern?: string;
-  fileFormat?: string;
+  // FILE 수집기 필드
+  path?: string;
+  file?: string;
+  format?: string;
   csvHasHeader?: boolean;
   csvDelimiter?: string;
-  csvColumns?: string;
   charset?: string;
+  // JDBC 수집기 필드
   url?: string;
   username?: string;
-  password?: string;
   query?: string;
   field1?: string;
-  field1Type?: string;
-  field1InitialValue?: string;
-  field2?: string;
-  field2Type?: string;
-  field2InitialValue?: string;
+  field1_type?: string;
+  field1_value?: string;
 }
 
-export interface AgentCollectorUpdateRequest {
-  name?: string;
-  enabled?: boolean;
-  pollIntervalMs?: number;
-  maxLinesPerPoll?: number;
-  maxRecordBytes?: number;
-  directory?: string;
-  fileNamePattern?: string;
-  fileFormat?: string;
-  csvHasHeader?: boolean;
-  csvDelimiter?: string;
-  csvColumns?: string;
-  charset?: string;
-  url?: string;
-  username?: string;
-  password?: string;
-  query?: string;
-  field1?: string;
-  field1Type?: string;
-  field1InitialValue?: string;
-  field2?: string;
-  field2Type?: string;
-  field2InitialValue?: string;
+export interface AgentSyncResult {
+  agentId: string;
+  connected: boolean;
+  snapshotSize: number;
+  status: "pushed" | "queued";
 }
 
-export const fetchAgentCollectors = async (
-  agentId: string,
-  targetConfigId: string
-): Promise<AgentCollector[]> => {
-  const res = await api.get(
-    `/api/rpc/agents/${agentId}/target-configs/${targetConfigId}/collectors`
-  );
+/**
+ * [2026-04-21] 에이전트 수집기 스냅샷 즉시 동기화.
+ * ds_file_system_config + ds_database_config → COLLECTORS_SYNC 전송
+ */
+export const syncAgent = async (agentId: string): Promise<AgentSyncResult> => {
+  const res = await api.post<AgentSyncResult>(`/api/v1/agents/${agentId}/sync`);
   return res.data;
 };
 
-export const createAgentCollector = async (
-  agentId: string,
-  targetConfigId: string,
-  req: AgentCollectorCreateRequest
-): Promise<AgentCollector> => {
-  const res = await api.post(
-    `/api/rpc/agents/${agentId}/target-configs/${targetConfigId}/collectors`,
-    req
-  );
+/**
+ * [2026-04-21] 에이전트 수집기 스냅샷 조회 (전송 없이 목록만).
+ */
+export const fetchAgentSnapshot = async (agentId: string): Promise<AgentSnapshotItem[]> => {
+  const res = await api.get<AgentSnapshotItem[]>(`/api/v1/agents/${agentId}/snapshot`);
   return res.data;
-};
-
-export const updateAgentCollector = async (
-  agentId: string,
-  targetConfigId: string,
-  collectorConfigId: string,
-  req: AgentCollectorUpdateRequest
-): Promise<AgentCollector> => {
-  const res = await api.put(
-    `/api/rpc/agents/${agentId}/target-configs/${targetConfigId}/collectors/${collectorConfigId}`,
-    req
-  );
-  return res.data;
-};
-
-export const deleteAgentCollector = async (
-  agentId: string,
-  targetConfigId: string,
-  collectorConfigId: string
-): Promise<void> => {
-  await api.delete(
-    `/api/rpc/agents/${agentId}/target-configs/${targetConfigId}/collectors/${collectorConfigId}`
-  );
 };

@@ -24,6 +24,8 @@ public class AgentTargetConfigDto {
         private int maxBatchSize;
         private long maxBatchMs;
         private long maxBatchBytes;
+        // [2026-04-22] 초당 최대 배치 전송 수
+        private int maxBatchesPerSecond;
         private boolean isActive;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
@@ -41,6 +43,8 @@ public class AgentTargetConfigDto {
                     .maxBatchSize(e.getMaxBatchSize())
                     .maxBatchMs(e.getMaxBatchMs())
                     .maxBatchBytes(e.getMaxBatchBytes())
+                    // [2026-04-22]
+                    .maxBatchesPerSecond(e.getMaxBatchesPerSecond())
                     .isActive(e.isActive())
                     .createdAt(e.getCreatedAt())
                     .updatedAt(e.getUpdatedAt())
@@ -59,8 +63,10 @@ public class AgentTargetConfigDto {
         private String tlsTruststorePassword;
         private int queueCapacity = 10000;
         private int maxBatchSize = 500;
-        private long maxBatchMs = 2000L;
-        private long maxBatchBytes = 1048576L;
+        private long maxBatchMs = 5000L;
+        private long maxBatchBytes = 524288L;
+        // [2026-04-22] 초당 최대 배치 전송 수 (0 = 무제한)
+        private int maxBatchesPerSecond = 10;
     }
 
     @Getter
@@ -73,7 +79,9 @@ public class AgentTargetConfigDto {
         private String tlsTruststorePassword;
         private int queueCapacity = 10000;
         private int maxBatchSize = 500;
-        private long maxBatchMs = 2000L;
-        private long maxBatchBytes = 1048576L;
+        private long maxBatchMs = 5000L;
+        private long maxBatchBytes = 524288L;
+        // [2026-04-22] 초당 최대 배치 전송 수 (0 = 무제한)
+        private int maxBatchesPerSecond = 10;
     }
 }

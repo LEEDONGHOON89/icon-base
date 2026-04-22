@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.itmasters.icon.engine.service.SingleIngestService;
 import com.itmasters.icon.rpc.agent.application.dto.AgentDto;
 import com.itmasters.icon.rpc.agent.application.service.AgentRegistrationService;
+import com.itmasters.icon.rpc.agent.application.service.DuplicateAgentIdException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
@@ -44,6 +46,8 @@ public class AgentRpcWebSocketHandler extends AbstractWebSocketHandler {
     private final AgentRegistrationService registrationService;
     // [2026-03-12] 에이전트 배치 → 파이프라인 실행
     private final SingleIngestService singleIngestService;
+    // [2026-04-21] HANDSHAKE 완료 이벤트 발행 → AgentSnapshotService 가 수신하여 스냅샷 푸시
+    private final ApplicationEventPublisher eventPublisher;
 
     /** sessionId -> agentId */
     private final Map<String, String> sessionAgentMap = new ConcurrentHashMap<>();
@@ -52,10 +56,12 @@ public class AgentRpcWebSocketHandler extends AbstractWebSocketHandler {
 
     public AgentRpcWebSocketHandler(ObjectMapper objectMapper,
                                     AgentRegistrationService registrationService,
-                                    SingleIngestService singleIngestService) {
+                                    SingleIngestService singleIngestService,
+                                    ApplicationEventPublisher eventPublisher) {
         this.objectMapper = objectMapper;
         this.registrationService = registrationService;
         this.singleIngestService = singleIngestService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -116,7 +122,23 @@ public class AgentRpcWebSocketHandler extends AbstractWebSocketHandler {
         String remoteAddress = session.getRemoteAddress() != null
                 ? session.getRemoteAddress().toString() : "unknown";
 
-        AgentDto.Info info = registrationService.processHandshake(msg, session.getId(), remoteAddress);
+        // [2026-04-21] 방안2: agentId 중복 시 NACK 반환 후 신규 연결 종료 (기존 에이전트 보호)
+        AgentDto.Info info;
+        try {
+            info = registrationService.processHandshake(msg, session.getId(), remoteAddress);
+        } catch (DuplicateAgentIdException ex) {
+            log.warn("[RPC] HANDSHAKE_NACK 전송 - agentId={}, 신규연결 거부: {}",
+                    ex.getAgentId(), remoteAddress);
+            String nack = objectMapper.writeValueAsString(Map.of(
+                    "type",    "HANDSHAKE_NACK",
+                    "agentId", ex.getAgentId(),
+                    "reason",  "DUPLICATE_AGENT_ID"
+            ));
+            session.sendMessage(new TextMessage(nack));
+            session.close(CloseStatus.POLICY_VIOLATION.withReason("DUPLICATE_AGENT_ID"));
+            return;
+        }
+
         sessionAgentMap.put(session.getId(), info.getAgentId());
         agentSessionMap.put(info.getAgentId(), session);
 
@@ -127,6 +149,8 @@ public class AgentRpcWebSocketHandler extends AbstractWebSocketHandler {
         ));
         session.sendMessage(new TextMessage(ack));
         log.info("[RPC] HANDSHAKE_ACK sent - agentId={}", info.getAgentId());
+        // [2026-04-21] HANDSHAKE 완료 이벤트 발행 — AgentSnapshotService 가 수신하여 전체 수집기 스냅샷 푸시
+        eventPublisher.publishEvent(new AgentConnectedEvent(info.getAgentId()));
     }
 
     private void handleBatch(WebSocketSession session, JsonNode root) throws IOException {
@@ -238,6 +262,31 @@ public class AgentRpcWebSocketHandler extends AbstractWebSocketHandler {
     public boolean isAgentConnected(String agentId) {
         WebSocketSession session = agentSessionMap.get(agentId);
         return session != null && session.isOpen();
+    }
+
+    /**
+     * [2026-04-22] COLLECTOR_RESET 메시지를 에이전트에 전송한다.
+     * 에이전트는 해당 수집기의 위치 파일(positions.dat / watermark.dat)을 삭제하고 재시작한다.
+     */
+    public boolean sendCollectorReset(String agentId, String targetId, String collectorId) {
+        WebSocketSession session = agentSessionMap.get(agentId);
+        if (session == null || !session.isOpen()) {
+            log.warn("[RPC] Cannot send COLLECTOR_RESET - agent not connected: agentId={}", agentId);
+            return false;
+        }
+        try {
+            java.util.Map<String, Object> payload = new java.util.HashMap<>();
+            payload.put("type",        "COLLECTOR_RESET");
+            payload.put("targetId",    targetId);
+            payload.put("collectorId", collectorId);
+            String json = objectMapper.writeValueAsString(payload);
+            session.sendMessage(new TextMessage(json));
+            log.info("[RPC] COLLECTOR_RESET sent - agentId={}, targetId={}, collectorId={}", agentId, targetId, collectorId);
+            return true;
+        } catch (IOException e) {
+            log.error("[RPC] Failed to send COLLECTOR_RESET to agentId={}: {}", agentId, e.getMessage());
+            return false;
+        }
     }
 
     /**

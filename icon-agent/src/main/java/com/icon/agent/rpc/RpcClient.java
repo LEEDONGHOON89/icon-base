@@ -3,6 +3,7 @@ package com.icon.agent.rpc;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 // [2026-02-25] 4번: ObjectNode 제거 — serializeBatch() 스트리밍 직렬화로 대체
+import com.icon.agent.audit.AuditLogger;
 import com.icon.agent.batch.Batch;
 import com.icon.agent.config.RpcConfig;
 import com.icon.agent.spool.SpoolManager;
@@ -70,6 +71,9 @@ public class RpcClient {
     /** Optional: apply COLLECTORS_SYNC to config.yaml */
     private final CollectorsSyncCallback collectorsSyncCallback;
 
+    // [2026-04-22] 수집기 초기화 콜백 — COLLECTOR_RESET 수신 시 TargetContext.resetCollector() 호출
+    private final CollectorResetCallback collectorResetCallback;
+
     /** config.yaml 최상단 agentId (내부통제시스템 등록용). null이면 targetId를 agentId로 사용 */
     private final String globalAgentId;
 
@@ -124,6 +128,19 @@ public class RpcClient {
             TargetConfigPersister configPersister,
             CollectorsSyncCallback collectorsSyncCallback,
             String globalAgentId) {
+        this(targetId, targetConfig, sslContext, spoolManager, configPersister,
+                collectorsSyncCallback, null, globalAgentId);
+    }
+
+    // [2026-04-22] CollectorResetCallback 추가 생성자
+    public RpcClient(String targetId,
+            com.icon.agent.config.TargetConfig targetConfig,
+            SSLContext sslContext,
+            SpoolManager spoolManager,
+            TargetConfigPersister configPersister,
+            CollectorsSyncCallback collectorsSyncCallback,
+            CollectorResetCallback collectorResetCallback,
+            String globalAgentId) {
         this.targetId = targetId;
         this.targetConfig = targetConfig;
         this.config = targetConfig.getRpc();
@@ -131,22 +148,31 @@ public class RpcClient {
         this.spoolManager = spoolManager;
         this.configPersister = configPersister;
         this.collectorsSyncCallback = collectorsSyncCallback;
+        this.collectorResetCallback = collectorResetCallback;
         this.globalAgentId = globalAgentId;
     }
 
-    /** Callback to persist CONFIG_UPDATE to config.yaml */
+    /** Callback to persist CONFIG_UPDATE to targets.json */
     @FunctionalInterface
     public interface TargetConfigPersister {
+        // [2026-04-22] maxBatchesPerSecond 파라미터 추가
         void persist(String targetId, String rpcEndpoint, boolean compress,
                      String tlsKeystorePath, String tlsKeystorePassword,
                      String tlsTruststorePath, String tlsTruststorePassword,
-                     int queueCapacity, int maxBatchSize, long maxBatchMs, long maxBatchBytes);
+                     int queueCapacity, int maxBatchSize, long maxBatchMs, long maxBatchBytes,
+                     int maxBatchesPerSecond);
     }
 
     /** Callback to apply COLLECTORS_SYNC to config.yaml */
     @FunctionalInterface
     public interface CollectorsSyncCallback {
         void onCollectorsSync(String targetId, java.util.List<com.icon.agent.config.CollectorConfig> collectors);
+    }
+
+    // [2026-04-22] 수집기 초기화 콜백 — COLLECTOR_RESET 메시지 수신 시 호출
+    @FunctionalInterface
+    public interface CollectorResetCallback {
+        void onCollectorReset(String targetId, String collectorId);
     }
 
     /** 연결 시작 (논블로킹) */
@@ -179,6 +205,8 @@ public class RpcClient {
             connected.set(true);
             reconnectAttempt = 0;
             log.info("[{}] WebSocket 연결 완료: {}", targetId, config.getEndpoint());
+            // [2026-04-21] 감사 로그: 연결 성공
+            AuditLogger.targetConnected(targetId, config.getEndpoint());
 
             // 재연결 후 스풀 재전송
             replaySpool();
@@ -516,10 +544,12 @@ public class RpcClient {
                 gen.writeStringField("tlsKeystorePassword",  tls != null && tls.getKeystorePassword() != null ? tls.getKeystorePassword() : "");
                 gen.writeStringField("tlsTruststorePath",    tls != null && tls.getTruststorePath() != null ? tls.getTruststorePath() : "");
                 gen.writeStringField("tlsTruststorePassword",tls != null && tls.getTruststorePassword() != null ? tls.getTruststorePassword() : "");
-                gen.writeNumberField("queueCapacity",    targetConfig.getQueueCapacity());
-                gen.writeNumberField("maxBatchSize",     targetConfig.getMaxBatchSize());
-                gen.writeNumberField("maxBatchMs",       targetConfig.getMaxBatchMs());
-                gen.writeNumberField("maxBatchBytes",    targetConfig.getMaxBatchBytes());
+                gen.writeNumberField("queueCapacity",       targetConfig.getQueueCapacity());
+                gen.writeNumberField("maxBatchSize",        targetConfig.getMaxBatchSize());
+                gen.writeNumberField("maxBatchMs",          targetConfig.getMaxBatchMs());
+                gen.writeNumberField("maxBatchBytes",       targetConfig.getMaxBatchBytes());
+                // [2026-04-22] maxBatchesPerSecond HANDSHAKE에 추가
+                gen.writeNumberField("maxBatchesPerSecond", targetConfig.getMaxBatchesPerSecond());
                 gen.writeEndObject();
             }
             ws.sendText(sw.toString(), true);
@@ -581,6 +611,8 @@ public class RpcClient {
         public CompletionStage<?> onClose(WebSocket ws, int statusCode, String reason) {
             log.warn("[{}] WebSocket 닫힘: {} {}", targetId, statusCode, reason);
             connected.set(false);
+            // [2026-04-21] 감사 로그: 연결 끊김
+            AuditLogger.targetDisconnected(targetId, statusCode + " " + reason);
             handleReconnect();
             return null;
         }
@@ -589,6 +621,8 @@ public class RpcClient {
         public void onError(WebSocket ws, Throwable error) {
             log.error("[{}] WebSocket 오류: {}", targetId, error.getMessage());
             connected.set(false);
+            // [2026-04-21] 감사 로그: 오류로 인한 연결 끊김
+            AuditLogger.targetDisconnected(targetId, "error: " + error.getMessage());
             handleReconnect();
         }
 
@@ -603,6 +637,21 @@ public class RpcClient {
                 }
                 if ("COLLECTORS_SYNC".equals(type)) {
                     handleCollectorsSync(node);
+                    return;
+                }
+                // [2026-04-22] 수집기 초기화 — 위치 파일 삭제 후 재시작
+                if ("COLLECTOR_RESET".equals(type)) {
+                    handleCollectorReset(node);
+                    return;
+                }
+                // [2026-04-21] 서버가 agentId 중복을 감지하면 HANDSHAKE_NACK 반환 → 재연결 중단
+                if ("HANDSHAKE_NACK".equals(type)) {
+                    String reason = node.path("reason").asText("DUPLICATE_AGENT_ID");
+                    log.error("[{}] HANDSHAKE_NACK 수신 (reason={}). " +
+                            "agentId 중복 — data/agent.id 파일을 삭제하거나 config.yaml의 agentId를 고유하게 설정하세요.",
+                            targetId, reason);
+                    AuditLogger.targetDisconnected(targetId, "HANDSHAKE_NACK:" + reason);
+                    running.set(false);  // 재연결 시도 중단
                     return;
                 }
 
@@ -627,26 +676,49 @@ public class RpcClient {
         private void handleConfigUpdate(JsonNode node) {
             String rpcEndpoint   = node.path("rpcEndpoint").asText(null);
             boolean compress     = node.path("compress").asBoolean(false);
-            String tlsKp         = node.has("tlsKeystorePath")   ? node.get("tlsKeystorePath").asText(null)   : null;
+            String tlsKp         = node.has("tlsKeystorePath")     ? node.get("tlsKeystorePath").asText(null)     : null;
             String tlsKpw        = node.has("tlsKeystorePassword") ? node.get("tlsKeystorePassword").asText(null) : null;
-            String tlsTp         = node.has("tlsTruststorePath") ? node.get("tlsTruststorePath").asText(null) : null;
+            String tlsTp         = node.has("tlsTruststorePath")   ? node.get("tlsTruststorePath").asText(null)   : null;
             String tlsTpw        = node.has("tlsTruststorePassword") ? node.get("tlsTruststorePassword").asText(null) : null;
             int queueCapacity    = node.path("queueCapacity").asInt(0);
             int maxBatchSize     = node.path("maxBatchSize").asInt(0);
             long maxBatchMs      = node.path("maxBatchMs").asLong(0);
             long maxBatchBytes   = node.path("maxBatchBytes").asLong(-1);
+            // [2026-04-22] maxBatchesPerSecond 추가 (-1 = 미지정, 변경 없음)
+            int maxBatchesPerSecond = node.path("maxBatchesPerSecond").asInt(-1);
 
-            log.info("[{}] CONFIG_UPDATE 수신 - endpoint={}, maxBatchSize={}, maxBatchMs={}, compress={}",
-                    targetId, rpcEndpoint, maxBatchSize, maxBatchMs, compress);
+            log.info("[{}] CONFIG_UPDATE 수신 - endpoint={}, maxBatchSize={}, maxBatchMs={}, maxBatchBytes={}, maxBatchesPerSecond={}, compress={}",
+                    targetId, rpcEndpoint, maxBatchSize, maxBatchMs, maxBatchBytes, maxBatchesPerSecond, compress);
 
             if (configPersister != null) {
                 try {
                     configPersister.persist(targetId, rpcEndpoint, compress,
                             tlsKp, tlsKpw, tlsTp, tlsTpw,
-                            queueCapacity, maxBatchSize, maxBatchMs, maxBatchBytes);
+                            queueCapacity, maxBatchSize, maxBatchMs, maxBatchBytes,
+                            maxBatchesPerSecond);
                 } catch (Exception e) {
-                    log.error("[{}] config.yaml 반영 실패: {}", targetId, e.getMessage());
+                    log.error("[{}] targets.json 반영 실패: {}", targetId, e.getMessage());
                 }
+            }
+        }
+
+        // [2026-04-22] COLLECTOR_RESET 수신 처리
+        private void handleCollectorReset(JsonNode node) {
+            String resetCollectorId = node.path("collectorId").asText(null);
+            if (resetCollectorId == null || resetCollectorId.isBlank()) {
+                log.warn("[{}] COLLECTOR_RESET: collectorId 누락", targetId);
+                return;
+            }
+            log.info("[{}] COLLECTOR_RESET 수신 - collectorId={}", targetId, resetCollectorId);
+            if (collectorResetCallback != null) {
+                try {
+                    collectorResetCallback.onCollectorReset(targetId, resetCollectorId);
+                } catch (Exception e) {
+                    log.error("[{}] COLLECTOR_RESET 처리 실패 - collectorId={}: {}",
+                            targetId, resetCollectorId, e.getMessage(), e);
+                }
+            } else {
+                log.warn("[{}] CollectorResetCallback 미등록 — COLLECTOR_RESET 무시", targetId);
             }
         }
 

@@ -70,6 +70,12 @@ public class DatabaseService {
         log.info("[{}] DATABASE 직접 폴링 시작 - incrementalColumn={}, lastValue={}",
                 dataSourceId, config.getIncrementalColumn(), effectiveLastValue);
 
+        // [2026-04-22] maxLinesPerPoll / maxRecordBytes 백엔드 직접 수집에도 적용
+        int maxLines = (config.getMaxLinesPerPoll() != null && config.getMaxLinesPerPoll() > 0)
+                       ? config.getMaxLinesPerPoll() : 0; // 0 = batchSize 기준
+        int maxBytes = (config.getMaxRecordBytes()  != null && config.getMaxRecordBytes()  > 0)
+                       ? config.getMaxRecordBytes()  : 0; // 0 = 제한 없음
+
         List<Map<String, Object>> records = new ArrayList<>();
         String newLastValue = effectiveLastValue;
 
@@ -80,19 +86,27 @@ public class DatabaseService {
             // [2026-04-21] effectiveLastValue 사용 (초기값 또는 하이워터마크)
             bindIncrementalParam(ps, 1, effectiveLastValue, config.getIncrementalColumnType());
 
+            // [2026-04-22] SQL 레벨 행 수 제한: maxLinesPerPoll 우선, 없으면 batchSize
             int batchSize = config.getBatchSize() != null && config.getBatchSize() > 0
                     ? config.getBatchSize() : 1000;
-            ps.setMaxRows(batchSize);
+            ps.setMaxRows(maxLines > 0 ? maxLines : batchSize);
 
             ResultSet rs = ps.executeQuery();
             ResultSetMetaData meta = rs.getMetaData();
             int cols = meta.getColumnCount();
 
-            while (rs.next()) {
+            // [2026-04-22] maxLinesPerPoll 자바 레벨 루프 제한 (setMaxRows 보완)
+            while (rs.next() && (maxLines <= 0 || records.size() < maxLines)) {
                 Map<String, Object> row = new LinkedHashMap<>();
                 for (int i = 1; i <= cols; i++) {
                     row.put(meta.getColumnLabel(i), rs.getObject(i));
                 }
+
+                // [2026-04-22] maxRecordBytes: 행 크기 추정 후 초과 시 문자열 값 잘라내기
+                if (maxBytes > 0) {
+                    truncateRowIfNeeded(row, maxBytes, dataSourceId);
+                }
+
                 records.add(row);
 
                 // 하이워터마크 갱신
@@ -267,6 +281,39 @@ public class DatabaseService {
             }
         }
         return null;
+    }
+
+    /**
+     * [2026-04-22] 행의 총 바이트 크기가 maxBytes를 초과하면 각 문자열 값을 비율대로 잘라내고
+     * [TRUNCATED] 마커를 추가한다. 숫자/날짜 등 비문자열 값은 변경하지 않는다.
+     * icon-agent JdbcCollector.truncateIfNeeded()와 동일한 방식.
+     */
+    private void truncateRowIfNeeded(Map<String, Object> row, int maxBytes, String dataSourceId) {
+        // 행 전체 직렬화 크기 추정
+        String rowStr = row.toString();
+        byte[] rowBytes = rowStr.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (rowBytes.length <= maxBytes) return;
+
+        log.warn("[{}] DATABASE 레코드 크기 초과 — 잘라냄: {} bytes > {} bytes 제한",
+                dataSourceId, rowBytes.length, maxBytes);
+
+        // 문자열 값만 잘라내기 (비율 기준: maxBytes / 컬럼 수)
+        int stringColCount = (int) row.values().stream()
+                .filter(v -> v instanceof String).count();
+        if (stringColCount == 0) return;
+
+        int bytesPerCol = Math.max(64, maxBytes / stringColCount);
+        for (Map.Entry<String, Object> entry : row.entrySet()) {
+            if (!(entry.getValue() instanceof String)) continue;
+            String val = (String) entry.getValue();
+            byte[] valBytes = val.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            if (valBytes.length > bytesPerCol) {
+                int approxChars = (int) ((long) bytesPerCol * val.length() / valBytes.length) - 20;
+                approxChars = Math.max(0, approxChars);
+                entry.setValue(val.substring(0, approxChars)
+                        + String.format("...[TRUNCATED: %d→%d bytes]", valBytes.length, bytesPerCol));
+            }
+        }
     }
 
     /**

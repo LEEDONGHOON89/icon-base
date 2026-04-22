@@ -92,6 +92,16 @@ public class FileSystemConfigEntity extends Auditable {
     @Column(name = "agent_id", length = 100)
     private String agentId;
 
+    // [2026-04-21] 에이전트 폴링 설정 — NULL 시 기본값으로 대체
+    @Column(name = "poll_interval_ms")
+    private Long pollIntervalMs;          // NULL → scanIntervalMinutes * 60000 변환값 사용
+
+    @Column(name = "max_lines_per_poll")
+    private Integer maxLinesPerPoll;      // NULL → 1000
+
+    @Column(name = "max_record_bytes")
+    private Integer maxRecordBytes;       // NULL → 524288 (512 KB)
+
     private FileSystemConfigEntity(String dsFileSystemConfigId, String dataSourceId, 
                                   String connectionName, String watchDirectory, String filePattern,
                                   String fileEncoding, String delimiter, Boolean hasHeader) {
@@ -161,6 +171,13 @@ public class FileSystemConfigEntity extends Auditable {
     // [2026-03-12] 에이전트 연결 정보 설정 메서드
     public void applyAgentLink(String agentId) {
         this.agentId = agentId;
+    }
+
+    // [2026-04-21] 에이전트 폴링 설정 업데이트
+    public void applyPollSettings(Long pollIntervalMs, Integer maxLinesPerPoll, Integer maxRecordBytes) {
+        this.pollIntervalMs = pollIntervalMs;
+        this.maxLinesPerPoll = maxLinesPerPoll;
+        this.maxRecordBytes = maxRecordBytes;
     }
 
     public void applyAdvanced(String processingStrategy,

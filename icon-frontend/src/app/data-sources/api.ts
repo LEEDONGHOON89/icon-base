@@ -53,6 +53,10 @@ export interface FileSystemConfig {
   lastErrorMessage?: string;
   // [2026-03-12] FILE_SYSTEM_REALTIME → 에이전트 연결 정보
   agentId?: string;
+  // [2026-04-21] 에이전트 폴링 설정
+  pollIntervalMs?: number;
+  maxLinesPerPoll?: number;
+  maxRecordBytes?: number;
 }
 
 export interface DatabaseConfig {
@@ -81,6 +85,10 @@ export interface DatabaseConfig {
   lastErrorMessage?: string;
   // [2026-03-13] DATABASE → 에이전트 연결 정보 (에이전트가 JDBC 폴링 후 Push하는 경우)
   agentId?: string;
+  // [2026-04-21] 에이전트 폴링 설정
+  pollIntervalMs?: number;
+  maxLinesPerPoll?: number;
+  maxRecordBytes?: number;
 }
 
 export interface DataSourceConfigResponse {
@@ -159,6 +167,26 @@ export const activateDataSource = async (id: string): Promise<DataSource> => {
 // 데이터 소스 비활성화
 export const deactivateDataSource = async (id: string): Promise<DataSource> => {
   const response = await api.put(`/api/v1/data-sources/${id}/deactivate`);
+  return response.data;
+};
+
+// [2026-04-22] 수집기 초기화 결과 타입
+export interface CollectionResetResult {
+  dataSourceId: string;
+  type: string;
+  mode: "DIRECT" | "AGENT";
+  agentId?: string;
+  collectorId?: string;
+  agentConnected?: boolean;
+  deletedLogs?: number;
+  message: string;
+}
+
+// [2026-04-22] 수집기 초기화 — last_position 초기화하여 처음부터 재수집
+export const resetCollection = async (dataSourceId: string): Promise<CollectionResetResult> => {
+  const response = await api.post<CollectionResetResult>(
+    `/api/v1/data-sources/${dataSourceId}/reset-collection`
+  );
   return response.data;
 };
 

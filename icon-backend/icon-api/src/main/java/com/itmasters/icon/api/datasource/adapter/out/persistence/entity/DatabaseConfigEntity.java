@@ -105,8 +105,35 @@ public class DatabaseConfigEntity extends Auditable {
     @Column(name = "agent_id", length = 100)
     private String agentId;
 
+    // [2026-04-21] 에이전트 폴링 설정 — NULL 시 기본값으로 대체
+    @Column(name = "poll_interval_ms")
+    private Long pollIntervalMs;          // NULL → 300000 (5분)
+
+    @Column(name = "max_lines_per_poll")
+    private Integer maxLinesPerPoll;      // NULL → 1000
+
+    @Column(name = "max_record_bytes")
+    private Integer maxRecordBytes;       // NULL → 524288 (512 KB)
+
     public void applyAgentLink(String agentId) {
         this.agentId = agentId;
+    }
+
+    // [2026-04-22] 수집 하이워터마크 초기화 — 처음부터 재수집 지원
+    public void resetWatermark() {
+        this.lastProcessedValue = null;
+        this.lastQueryTime = null;
+    }
+
+    // [2026-04-21] DataSourceEntity.activate()/deactivate() 와 동기화용
+    public void activate()   { this.isActive = true; }
+    public void deactivate() { this.isActive = false; }
+
+    // [2026-04-21] 에이전트 폴링 설정 업데이트
+    public void applyPollSettings(Long pollIntervalMs, Integer maxLinesPerPoll, Integer maxRecordBytes) {
+        this.pollIntervalMs = pollIntervalMs;
+        this.maxLinesPerPoll = maxLinesPerPoll;
+        this.maxRecordBytes = maxRecordBytes;
     }
 
     // [2026-04-21] passwordEncrypted: null/blank 입력 시 기존 값 유지

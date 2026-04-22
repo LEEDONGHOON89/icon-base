@@ -40,11 +40,40 @@
     </appender>
 
     <!--
+        [2026-04-21] agent.audit 전용 appender
+        - 에이전트 기동/종료, 연결, 수집기 시작/중지, 설정 변경, 스풀 한도 초과 기록
+        - 출력 형식: JSON Lines (AuditLogger가 순수 JSON 1줄로 출력)
+        - 파일 경로: logs/audit.log
+        - 일별 롤링, 최대 100MB, 365일(1년) 보존 — 금융권 감사 요건
+    -->
+    <appender name="AUDIT" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/audit.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>logs/audit.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>365</maxHistory>
+            <totalSizeCap>2GB</totalSizeCap>
+        </rollingPolicy>
+        <!-- [2026-04-21] 순수 JSON 한 줄만 출력 (AuditLogger가 ts 포함한 JSON 생성) -->
+        <encoder>
+            <pattern>%msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!--
         [2026-02-25] agent.metrics 로거: METRICS appender로만 라우팅
         - additivity=false: 루트 로거(collector-agent.log)에 중복 출력 방지
     -->
     <logger name="agent.metrics" level="INFO" additivity="false">
         <appender-ref ref="METRICS"/>
+    </logger>
+
+    <!--
+        [2026-04-21] agent.audit 로거: AUDIT appender로만 라우팅
+        - additivity=false: 운영 로그(collector-agent.log)에 중복 출력 방지
+    -->
+    <logger name="agent.audit" level="INFO" additivity="false">
+        <appender-ref ref="AUDIT"/>
     </logger>
 
     <root level="INFO">

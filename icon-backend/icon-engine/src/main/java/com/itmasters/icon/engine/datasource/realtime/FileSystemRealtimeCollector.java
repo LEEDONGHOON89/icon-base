@@ -30,15 +30,20 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * 설정:
  *   icon.engine.file-realtime.poll-interval-ms=1000   (틱 주기, 기본 1초)
- *   ds_file_system_config.scan_interval_minutes       (소스별 수집 주기, 기본 1분)
+ *   ds_file_system_config.scan_interval_minutes       (소스별 수집 주기 — 초 단위, 기본 60초)
+ *
+ * [2026-04-22] scan_interval_minutes 의미 변경: 분(minutes) → 초(seconds)
+ *   UI에서 "폴링 간격(초)" 입력값이 직접 저장되므로 더 이상 분으로 취급하지 않는다.
+ *   예) 값 60 → 60초 폴링 (기존: 60분 폴링)
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class FileSystemRealtimeCollector {
 
-    /** scanIntervalMinutes 미설정 시 기본값 (분) */
-    private static final int DEFAULT_SCAN_INTERVAL_MINUTES = 1;
+    // [2026-04-22] 단위 변경: 분 → 초. scan_interval_minutes 컬럼을 초 단위로 재해석한다.
+    /** scan_interval_minutes 미설정 시 기본값 (초). 60초 = 1분 */
+    private static final int DEFAULT_SCAN_INTERVAL_SECONDS = 60;
 
     private final EngineDataSourceRepository engineDataSourceRepository;
     private final FileSystemConfigRepository fileSystemConfigRepository;
@@ -50,7 +55,8 @@ public class FileSystemRealtimeCollector {
     private final Map<String, Instant> lastRunMap = new ConcurrentHashMap<>();
 
     /**
-     * dataSourceId → 캐싱된 scanIntervalMinutes (분).
+     * dataSourceId → 캐싱된 scanIntervalSeconds (초).
+     * [2026-04-22] 컬럼명은 scan_interval_minutes 이지만 초 단위로 재해석한다.
      * 수집 실행 시점에 DB에서 최신값으로 갱신된다.
      * 틱마다 DB를 조회하는 부하를 방지한다.
      */
@@ -76,24 +82,24 @@ public class FileSystemRealtimeCollector {
         for (EngineDataSourceEntity source : sources) {
             String dataSourceId = source.getDataSourceId();
             try {
-                // 캐싱된 간격 사용 (미캐싱 시 DB 조회)
-                int intervalMinutes = intervalCache.getOrDefault(dataSourceId, DEFAULT_SCAN_INTERVAL_MINUTES);
-                long intervalMs = (long) intervalMinutes * 60 * 1000L;
+                // [2026-04-22] 캐싱된 간격 사용 (단위: 초). 미캐싱 시 기본값 60초 적용
+                int intervalSeconds = intervalCache.getOrDefault(dataSourceId, DEFAULT_SCAN_INTERVAL_SECONDS);
+                long intervalMs = (long) intervalSeconds * 1_000L;
 
                 Instant lastRun = lastRunMap.get(dataSourceId);
                 long elapsedMs = lastRun != null ? now.toEpochMilli() - lastRun.toEpochMilli() : intervalMs;
 
                 if (elapsedMs < intervalMs) {
-                    // log.debug("[{}] 수집 주기 미도달 - 간격={}분, 경과={}초",dataSourceId, intervalMinutes, elapsedMs / 1000);
+                    // log.debug("[{}] 수집 주기 미도달 - 간격={}초, 경과={}초", dataSourceId, intervalSeconds, elapsedMs / 1000);
                     continue;
                 }
 
-                // 수집 시점에 scanIntervalMinutes 최신값 갱신 (DB 조회)
-                int freshInterval = loadScanIntervalMinutes(dataSourceId);
+                // 수집 시점에 scan_interval_minutes(초 단위) 최신값 갱신 (DB 조회)
+                int freshInterval = loadScanIntervalSeconds(dataSourceId);
                 intervalCache.put(dataSourceId, freshInterval);
                 lastRunMap.put(dataSourceId, now);
 
-                log.info("[{}] FILE_SYSTEM_REALTIME 수집 시작 - 간격={}분", dataSourceId, freshInterval);
+                log.info("[{}] FILE_SYSTEM_REALTIME 수집 시작 - 간격={}초", dataSourceId, freshInterval);
                 collectOne(dataSourceId);
 
             } catch (Exception e) {
@@ -104,10 +110,10 @@ public class FileSystemRealtimeCollector {
     }
 
     /**
-     * DB에서 소스별 scanIntervalMinutes 조회.
-     * 미설정이거나 0 이하인 경우 DEFAULT_SCAN_INTERVAL_MINUTES 반환.
+     * [2026-04-22] DB에서 소스별 scan_interval_minutes 컬럼 값 조회 (초 단위로 재해석).
+     * 미설정이거나 0 이하인 경우 DEFAULT_SCAN_INTERVAL_SECONDS(60초) 반환.
      */
-    private int loadScanIntervalMinutes(String dataSourceId) {
+    private int loadScanIntervalSeconds(String dataSourceId) {
         Optional<EngineDsFileSystemConfigEntity> cfg =
                 fileSystemConfigRepository.findActiveByDataSourceId(dataSourceId);
         if (cfg.isPresent()
@@ -115,7 +121,7 @@ public class FileSystemRealtimeCollector {
                 && cfg.get().getScanIntervalMinutes() > 0) {
             return cfg.get().getScanIntervalMinutes();
         }
-        return DEFAULT_SCAN_INTERVAL_MINUTES;
+        return DEFAULT_SCAN_INTERVAL_SECONDS;
     }
 
     private void collectOne(String dataSourceId) {

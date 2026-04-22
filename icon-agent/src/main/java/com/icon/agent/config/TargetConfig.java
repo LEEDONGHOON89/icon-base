@@ -37,17 +37,35 @@ public class TargetConfig {
 
     /** 전송 배치당 최대 레코드 수 */
     @JsonProperty("maxBatchSize")
+    // [2026-04-22] 튜닝 가이드 기본값: 500건 (소량 100, 대량 5000)
     private int maxBatchSize = 500;
 
     /** 불완전한 배치를 플러시하기 전 최대 대기 시간 (밀리초) */
     @JsonProperty("maxBatchMs")
-    private long maxBatchMs = 2000;
+    // [2026-04-22] 튜닝 가이드 기본값: 5000ms (폴링 주기 1분 환경에서 응답성과 효율 균형)
+    private long maxBatchMs = 5000;
 
     // [2026-02-25] 1번: 배치 최대 바이트 크기 추가 (0이면 제한 없음)
     // 레코드 건수(maxBatchSize)와 함께 적용, 먼저 도달하는 기준으로 배치 분할
-    /** 배치당 최대 바이트 크기. 기본값: 1MB (0=제한 없음) */
+    /** 배치당 최대 바이트 크기. 기본값: 512KB (0=제한 없음) */
     @JsonProperty("maxBatchBytes")
-    private long maxBatchBytes = 1_048_576;
+    // [2026-04-22] 튜닝 가이드 기본값: 512KB (메모리 절약, 1MB → 512KB)
+    private long maxBatchBytes = 524_288;
+
+    // [2026-04-21] 스풀 크기 제한 — 디스크 고갈 방지
+    /** 스풀 디렉토리 최대 파일 수. 기본값: 10000 (0=제한 없음) */
+    @JsonProperty("maxSpoolFiles")
+    private int maxSpoolFiles = 10_000;
+
+    /** 스풀 디렉토리 최대 크기(MB). 기본값: 2048 MB (0=제한 없음) */
+    @JsonProperty("maxSpoolSizeMb")
+    private long maxSpoolSizeMb = 2048;
+
+    // [2026-04-21] 전송 속도 제한 — 서버 부하 최소화
+    /** 초당 최대 배치 전송 수. 기본값: 10 (서버 부하 방지) */
+    @JsonProperty("maxBatchesPerSecond")
+    // [2026-04-22] 튜닝 가이드 기본값: 10 batch/s (0=무제한 → 10으로 변경)
+    private int maxBatchesPerSecond = 10;
 
     public String getId() {
         return id;
@@ -106,5 +124,31 @@ public class TargetConfig {
 
     public void setMaxBatchBytes(long maxBatchBytes) {
         this.maxBatchBytes = maxBatchBytes;
+    }
+
+    // [2026-04-21] 스풀 크기 제한 getter/setter
+    public int getMaxSpoolFiles() {
+        return maxSpoolFiles;
+    }
+
+    public void setMaxSpoolFiles(int maxSpoolFiles) {
+        this.maxSpoolFiles = maxSpoolFiles;
+    }
+
+    public long getMaxSpoolSizeMb() {
+        return maxSpoolSizeMb;
+    }
+
+    public void setMaxSpoolSizeMb(long maxSpoolSizeMb) {
+        this.maxSpoolSizeMb = maxSpoolSizeMb;
+    }
+
+    // [2026-04-21] Rate Limit getter/setter
+    public int getMaxBatchesPerSecond() {
+        return maxBatchesPerSecond;
+    }
+
+    public void setMaxBatchesPerSecond(int maxBatchesPerSecond) {
+        this.maxBatchesPerSecond = maxBatchesPerSecond;
     }
 }

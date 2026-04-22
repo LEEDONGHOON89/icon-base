@@ -166,8 +166,8 @@ deploy_backend() {
         info "DB init.sql 전송 완료"
     fi
 
-    # [2026-04-17] 증분 마이그레이션 파일 전송 (V007+ 이후 파일용, 현재는 빈 폴더)
-    local MIGRATION_LOCAL="$BACKEND_DIR/icon-api/src/main/resources/db/migrations"
+    # [2026-04-22] 증분 마이그레이션 경로를 루트 db/migrations/ 로 통일 (icon-api/resources 경유 제거)
+    local MIGRATION_LOCAL="$BASE_DIR/db/migrations"
     if [ -d "$MIGRATION_LOCAL" ] && [ -n "$(ls "$MIGRATION_LOCAL"/V*.sql 2>/dev/null)" ]; then
         info "증분 마이그레이션 SQL 전송 중..."
         ssh_run "mkdir -p '$S_DIR/db/migrations'"
