@@ -3,6 +3,20 @@
 // [2026-04-22] JSONB 동적 필터 행 UI — TODO-001/002 공통 재사용 컴포넌트
 import { PlusIcon, XMarkIcon } from "@heroicons/react/24/outline";
 
+// [2026-04-22] crypto.randomUUID는 HTTPS(보안 컨텍스트)에서만 사용 가능
+// HTTP 환경 호환을 위한 폴백 UUID 생성 함수
+function generateId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  // 폴백: Math.random 기반 UUID v4 형식
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 export interface JsonFilter {
   id: string;
   field: string;
@@ -33,7 +47,7 @@ export default function JsonFilterBuilder({
   const addFilter = () => {
     onChange([
       ...filters,
-      { id: crypto.randomUUID(), field: "", op: "eq", value: "" },
+      { id: generateId(), field: "", op: "eq", value: "" },
     ]);
   };
 
