@@ -37,6 +37,9 @@ import { toast } from "react-hot-toast";
 import { useErrorHandling } from "@/hooks/useErrorHandling";
 // [2026-04-22] 수집기 초기화 API
 import { resetCollection } from "@/app/data-sources/api";
+// [2026-04-22] 수집 원본 / 매핑 결과 조회 컴포넌트 — TODO-001/002
+import LandingRecordView from "@/components/datasource/LandingRecordView";
+import MappedStorageView from "@/components/datasource/MappedStorageView";
 
 // 아이콘 매핑
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -63,7 +66,8 @@ export default function DataSourceDetailPage() {
     name: "",
     description: "",
   });
-  const [activeTab, setActiveTab] = useState<"overview" | "config" | "originalSchema" | "profileSchema" | "parsers">("overview");
+  // [2026-04-22] "landing"(수집 원본), "mapped"(매핑 결과) 탭 추가 — TODO-001/002
+  const [activeTab, setActiveTab] = useState<"overview" | "config" | "originalSchema" | "profileSchema" | "parsers" | "landing" | "mapped">("overview");
   // [2026-04-22] 수집기 초기화 확인 다이얼로그 상태
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
@@ -389,6 +393,26 @@ export default function DataSourceDetailPage() {
                 파서 설정
               </button>
             )}
+            {/* [2026-04-22] 수집 원본 탭 — TODO-001 */}
+            <button
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === "landing"
+                  ? "border-blue-500 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
+              onClick={() => setActiveTab("landing")}
+            >
+              수집 원본
+            </button>
+            {/* [2026-04-22] 매핑 결과 탭 — TODO-002 */}
+            <button
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === "mapped"
+                  ? "border-blue-500 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
+              onClick={() => setActiveTab("mapped")}
+            >
+              매핑 결과
+            </button>
           </nav>
         </div>
 
@@ -558,6 +582,16 @@ export default function DataSourceDetailPage() {
           {/* [2026-04-21] DATABASE 타입은 파서 설정 탭 미표시 */}
           {activeTab === "parsers" && dataSource.sourceType !== "DATABASE" && (
             <DataSourceParserSection dataSourceId={dataSourceId} />
+          )}
+
+          {/* [2026-04-22] 수집 원본 조회 — TODO-001 */}
+          {activeTab === "landing" && (
+            <LandingRecordView dataSourceId={dataSourceId} />
+          )}
+
+          {/* [2026-04-22] 매핑 결과 조회 — TODO-002 */}
+          {activeTab === "mapped" && (
+            <MappedStorageView dataSourceId={dataSourceId} />
           )}
 
         </div>

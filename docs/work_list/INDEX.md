@@ -24,6 +24,7 @@
 | 2026-04-22 | [2026-04-22_폴링간격초단위통합.md](2026-04-22_폴링간격초단위통합.md) | FILE_SYSTEM_REALTIME/DATABASE 폴링 간격을 초(seconds) 단위로 통합 — scanIntervalMinutes 분→초 재해석, AgentSnapshotService fallback 수정, ConfigForm 단일 필드로 통합 |
 | 2026-04-22 | [2026-04-22_백엔드직접수집maxLinesPerPoll_maxRecordBytes적용.md](2026-04-22_백엔드직접수집maxLinesPerPoll_maxRecordBytes적용.md) | 백엔드 직접 수집 시 maxLinesPerPoll/maxRecordBytes 미적용 버그 수정 — 엔진 엔티티 필드 추가, FileSystemRealtimeService/DatabaseService 제한 로직 적용 |
 | 2026-04-22 | [2026-04-22_미사용에이전트수집기테이블삭제.md](2026-04-22_미사용에이전트수집기테이블삭제.md) | agent_collector_configs/file/jdbc 테이블 및 관련 Java 클래스·프론트엔드 함수 전체 삭제 (AgentSnapshotService로 대체됨) |
+| 2026-04-22 | [2026-04-22_TODO001_002_수집원본_매핑결과_조회화면추가.md](2026-04-22_TODO001_002_수집원본_매핑결과_조회화면추가.md) | TODO-001 수집원본/TODO-002 매핑결과 조회 화면 추가, 파서 프론트엔드 재설계 완성, DB 인덱스 추가 |
 
 ---
 
