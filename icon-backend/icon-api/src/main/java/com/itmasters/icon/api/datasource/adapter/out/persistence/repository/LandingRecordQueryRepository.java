@@ -77,8 +77,9 @@ public class LandingRecordQueryRepository {
                 .build();
 
         // 2. 데이터 조회 (페이지네이션)
+        // [2026-04-22] ::text → CAST(... AS text) — Hibernate가 ::를 named param으로 파싱하는 버그 방지
         String dataSql = "SELECT lr.landing_record_id, lr.exec_ds_mp_id, lr.data_source_id, " +
-                "lr.source_type, lr.raw_payload::text, lr.row_index, " +
+                "lr.source_type, CAST(lr.raw_payload AS text), lr.row_index, " +
                 "lr.extracted_at, lr.ingestion_status, lr.ingestion_message " +
                 "FROM landing_records lr " + ctx.where +
                 " ORDER BY lr.landing_record_id DESC " +

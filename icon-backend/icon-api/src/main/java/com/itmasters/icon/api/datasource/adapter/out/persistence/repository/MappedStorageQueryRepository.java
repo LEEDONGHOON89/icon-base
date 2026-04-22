@@ -80,9 +80,10 @@ public class MappedStorageQueryRepository {
                 .build();
 
         // 2. 데이터 조회 (페이지네이션)
+        // [2026-04-22] ::text → CAST(... AS text) — Hibernate가 ::를 named param으로 파싱하는 버그 방지
         String dataSql = "SELECT ms.mapped_storage_id, ms.landing_record_id, ms.exec_ds_mp_id, " +
                 "lr.data_source_id, ms.transaction_id, ms.row_index, " +
-                "ms.row_data::text, ms.reg_dt, ms.processing_status, ms.error_message " +
+                "CAST(ms.row_data AS text), ms.reg_dt, ms.processing_status, ms.error_message " +
                 "FROM mapped_storages ms " +
                 "JOIN landing_records lr ON ms.landing_record_id = lr.landing_record_id " +
                 ctx.where +
@@ -115,10 +116,11 @@ public class MappedStorageQueryRepository {
      */
     @Transactional(readOnly = true)
     public MappedStorageDto.DetailWithOrigin findWithOrigin(Long mappedStorageId) {
+        // [2026-04-22] ::text → CAST(... AS text) — Hibernate named param 파싱 충돌 방지
         String sql = "SELECT ms.mapped_storage_id, ms.landing_record_id, ms.exec_ds_mp_id, " +
                 "lr.data_source_id, ms.transaction_id, ms.row_index, " +
-                "ms.row_data::text, ms.reg_dt, ms.processing_status, ms.error_message, " +
-                "lr.raw_payload::text AS raw_payload " +
+                "CAST(ms.row_data AS text), ms.reg_dt, ms.processing_status, ms.error_message, " +
+                "CAST(lr.raw_payload AS text) AS raw_payload " +
                 "FROM mapped_storages ms " +
                 "JOIN landing_records lr ON ms.landing_record_id = lr.landing_record_id " +
                 "WHERE ms.mapped_storage_id = :id";
