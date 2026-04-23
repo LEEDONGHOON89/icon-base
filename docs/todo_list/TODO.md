@@ -29,6 +29,7 @@
 | 008 | ⏸ | Circuit Breaker 도입 검토 — 분석 중 | 에이전트 안정성 | [todo-008.md](./todo-008_CircuitBreaker분석.md) | 2026-04-21 |
 | 009 | 🔲 | 배치 무결성 체크섬 (SHA-256, 서버 검증) | 에이전트 안정성 | [todo-009.md](./todo-009_배치무결성체크섬.md) | 2026-04-21 |
 | 010 | 🔲 | Windows에서 Excel 저장 시 CSV 파일 처음부터 재수집되는 오류 개선 | 에이전트 버그 | [todo-010.md](./todo-010_Windows엑셀저장시CSV재수집오류.md) | 2026-04-23 |
+| 011 | ⏸ | relation-async 스레드풀 포화 및 작업 유실 위험 개선 검토 | 백엔드 성능 | [todo-011.md](./todo-011_relation_async스레드풀개선검토.md) | 2026-04-23 |
 
 ---
 
