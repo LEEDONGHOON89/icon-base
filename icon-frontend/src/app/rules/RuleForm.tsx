@@ -394,6 +394,19 @@ function RuleForm({
 
           {/* 오른쪽: 집계/시퀀스/조건 설정 */}
           <div className="space-y-6 px-1 lg:col-span-2">
+
+            {/* [2026-04-23] 그룹핑 필드: 평가 모드와 무관하게 항상 표시 (SINGLE_ROW/WINDOW 모두 필수) */}
+            <div>
+              <Input
+                label="그룹핑 필드 (쉼표 구분)"
+                {...register("groupByFields")}
+                placeholder="예: CUS_ID, device_id"
+              />
+              <p className="text-xs text-gray-500 -mt-3">
+                탐지 기준 단위 필드 (필수). 예: CUS_ID → 고객별 탐지. 여러 필드는 쉼표로 구분
+              </p>
+            </div>
+
             {/* 집계 설정과 시퀀스 설정을 가로로 배치 */}
             {(showAggregationSettings || showSequenceSettings) && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -471,17 +484,6 @@ function RuleForm({
                         })}
                         placeholder="예: 10"
                       />
-                    </div>
-
-                    <div>
-                      <Input
-                        label="그룹화 필드 (쉼표 구분)"
-                        {...register("groupByFields")}
-                        placeholder="예: account_id, user_id"
-                      />
-                      <p className="text-xs text-gray-500 -mt-3">
-                        어떤 기준으로 묶을지 지정 (SQL의 GROUP BY). 예: account_id로 그룹화하면 계정별로 집계. 없으면 전체를 하나로 집계
-                      </p>
                     </div>
 
                     <div>
