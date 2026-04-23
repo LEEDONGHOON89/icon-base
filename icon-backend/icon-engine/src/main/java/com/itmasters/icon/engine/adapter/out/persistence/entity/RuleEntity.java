@@ -64,7 +64,11 @@ public class RuleEntity {
      * Sensor의 where_json과 동일한 형식 사용
      * 예: {"approval_datetime": null} 또는 [{"fieldName": "is_active", "operator": "EQUALS", "value": true}]
      * predicate_sensor_id가 null이고 where_json이 있으면 이 조건으로 필터링
+     *
+     * [2026-04-23] @JdbcTypeCode(SqlTypes.JSON) 추가 - varchar → jsonb 타입 불일치 오류 수정
+     *   증상: "열 where_json은(는) jsonb 자료형인데 표현식은 character varying 자료형입니다"
      */
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
     @Column(name = "where_json", columnDefinition = "jsonb")
     private String whereJson;
 
