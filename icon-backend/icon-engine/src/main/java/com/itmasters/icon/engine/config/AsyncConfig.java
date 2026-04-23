@@ -56,7 +56,7 @@ public class AsyncConfig implements AsyncConfigurer {
      * - CallerRunsPolicy: 큐·풀 모두 포화 시 호출 스레드에서 직접 실행 (데이터 유실 방지)
      */
     @Bean(name = "ingestTaskExecutor")
-    public Executor ingestTaskExecutor() {
+    public ThreadPoolTaskExecutor ingestTaskExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(ingestCorePoolSize);
         executor.setMaxPoolSize(ingestMaxPoolSize);
@@ -97,9 +97,10 @@ public class AsyncConfig implements AsyncConfigurer {
     /**
      * [2026-04-23] @Async 기본 실행기를 ingestTaskExecutor로 지정
      * executor 이름 미지정 @Async 호출 시 SimpleAsyncTaskExecutor 폴백 방지
+     * Spring @Configuration CGLIB proxy로 동일 bean 반환 보장
      */
     @Override
     public Executor getAsyncExecutor() {
-        return ingestTaskExecutor();
+        return ingestTaskExecutor();   // CGLIB proxy → Spring bean 반환 (새 인스턴스 아님)
     }
 }
