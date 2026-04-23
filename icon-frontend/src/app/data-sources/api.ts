@@ -236,6 +236,8 @@ export interface DataProfile {
   entityType?: string;
   entityIdField?: string;
   storeFields?: string[];
+  // [2026-04-23] event_stream 타임스탬프 필드명
+  timestampKey?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -264,6 +266,8 @@ export interface DataProfileUpdateRequest {
   entityType?: string;
   entityIdField?: string;
   storeFields?: string[];
+  // [2026-04-23] event_stream 타임스탬프 필드명 (EVENT_STREAM 선택 시 필수)
+  timestampKey?: string;
 }
 
 // ======== 데이터 프로파일 API 함수들 ========

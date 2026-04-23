@@ -185,9 +185,20 @@ public class DataProfileService implements DataProfileUseCase {
 
         // Entity Attributes 필드 저장
         if (request.getDestinationType() != null) {
-            existingProfile.setDestinationType(
-                com.itmasters.icon.api.common.domain.type.DestinationType.valueOf(request.getDestinationType())
-            );
+            com.itmasters.icon.api.common.domain.type.DestinationType destType =
+                    com.itmasters.icon.api.common.domain.type.DestinationType.valueOf(request.getDestinationType());
+            existingProfile.setDestinationType(destType);
+
+            // [2026-04-23] EVENT_STREAM destination 선택 시 timestampKey 필수 검증
+            boolean needsTimestamp = destType == com.itmasters.icon.api.common.domain.type.DestinationType.EVENT_STREAM
+                    || destType == com.itmasters.icon.api.common.domain.type.DestinationType.BOTH;
+            if (needsTimestamp) {
+                String tsKey = request.getTimestampKey();
+                if (tsKey == null || tsKey.trim().isEmpty()) {
+                    throw new IllegalArgumentException(
+                            "이벤트 스트림 저장 방식 선택 시 타임스탬프 필드는 필수입니다.");
+                }
+            }
         }
         if (request.getEntityType() != null) {
             existingProfile.setEntityType(
@@ -200,9 +211,15 @@ public class DataProfileService implements DataProfileUseCase {
         if (request.getStoreFields() != null) {
             existingProfile.setStoreFields(request.getStoreFields());
         }
+        // [2026-04-23] timestampKey 저장
+        if (request.getTimestampKey() != null) {
+            existingProfile.setTimestampKey(request.getTimestampKey().trim().isEmpty()
+                    ? null : request.getTimestampKey().trim());
+        }
 
         ProfileEntity savedProfile = profileRepository.save(existingProfile);
-        log.info("프로파일 수정 완료 - profileId: {}, detectKey: {}", savedProfile.getProfileId(), savedProfile.getGroupKey());
+        log.info("프로파일 수정 완료 - profileId: {}, detectKey: {}, timestampKey: {}",
+                savedProfile.getProfileId(), savedProfile.getGroupKey(), savedProfile.getTimestampKey());
         
         return DataProfileDto.Response.from(savedProfile);
     }
