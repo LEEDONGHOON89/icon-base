@@ -55,6 +55,11 @@ public class RuleService {
      */
     @Transactional
     public RuleDto.Response createRule(RuleDto.CreateRequest request) {
+        // [2026-04-23] AGG_ 접두사 필수 검증 추가 (도메인 규칙)
+        if (request.getRuleId() == null || !request.getRuleId().startsWith("AGG_")) {
+            throw new IllegalArgumentException("룰 ID는 AGG_ 접두사로 시작해야 합니다: " + request.getRuleId());
+        }
+
         // 중복 ID 체크
         if (ruleRepository.existsById(request.getRuleId())) {
             throw new IllegalArgumentException("Rule ID already exists: " + request.getRuleId());

@@ -325,15 +325,16 @@ function RuleForm({
                 className="bg-gray-50"
               />
             ) : (
+              {/* [2026-04-23] AGG_ 접두사 필수 검증 추가 (권장 → 필수) */}
               <Input
-                label="룰 ID (AGG_ 프리픽스 권장)"
+                label="룰 ID (AGG_ 접두사 필수)"
                 {...register("ruleId", {
                   required: "룰 ID는 필수입니다.",
-                  minLength: { value: 2, message: "룰 ID는 2자 이상" },
+                  minLength: { value: 5, message: "룰 ID는 5자 이상 (AGG_ 포함)" },
                   maxLength: { value: 100, message: "룰 ID는 100자 이하" },
                   pattern: {
-                    value: /^[A-Z_][A-Z0-9_]*$/,
-                    message: "룰 ID는 대문자, 숫자, 언더스코어만 사용 가능합니다"
+                    value: /^AGG_[A-Z0-9_]+$/,
+                    message: "룰 ID는 AGG_로 시작해야 하며 대문자, 숫자, 언더스코어만 사용 가능합니다 (예: AGG_MULTIPLE_FAIL)"
                   }
                 })}
                 placeholder="예: AGG_MULTIPLE_FAIL"
