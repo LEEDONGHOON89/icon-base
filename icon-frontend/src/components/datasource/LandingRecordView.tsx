@@ -196,6 +196,9 @@ export default function LandingRecordView({
     size: 20,
   });
   const [page, setPage] = useState(0);
+  // [2026-04-23] 조회 버튼 클릭 시 조건 변경 없어도 강제 재조회를 위한 카운터
+  // queryKey에 포함시켜 동일 조건 재조회 시 캐시 미사용 → 항상 API 호출
+  const [searchTick, setSearchTick] = useState(0);
 
   // 상세 모달
   const [selectedRecord, setSelectedRecord] = useState<LandingRecord | null>(
@@ -203,7 +206,8 @@ export default function LandingRecordView({
   );
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ["landing-records", dataSourceId, appliedParams, page],
+    // [2026-04-23] searchTick을 queryKey에 포함 → 조건 미변경 재조회 시에도 항상 API 호출
+    queryKey: ["landing-records", dataSourceId, appliedParams, page, searchTick],
     queryFn: () =>
       fetchLandingRecords(dataSourceId, { ...appliedParams, page }),
     placeholderData: (prev) => prev,
@@ -220,6 +224,8 @@ export default function LandingRecordView({
     };
     setAppliedParams(params);
     setPage(0);
+    // [2026-04-23] 조건 변경 없이 재조회 시에도 API 호출되도록 tick 증가
+    setSearchTick((t) => t + 1);
   };
 
   const toggleStatus = (s: string) => {

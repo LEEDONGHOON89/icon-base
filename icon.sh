@@ -438,6 +438,45 @@ run_inline_migrations() {
              ADD COLUMN IF NOT EXISTS poll_interval_ms   BIGINT,
              ADD COLUMN IF NOT EXISTS max_lines_per_poll INTEGER,
              ADD COLUMN IF NOT EXISTS max_record_bytes   INTEGER;"
+
+    # ── V1_0_9 : agent_target_configs — 초당 배치 전송 제한 추가 ─────────
+    # [2026-04-22] 초당 최대 배치 전송 수. 0 = 무제한 (기본값 10)
+    apply_inline_migration "1.0.9" \
+        "V1_0_9__add_max_batches_per_second_to_agent_target_configs" \
+        "ALTER TABLE public.agent_target_configs
+             ADD COLUMN IF NOT EXISTS max_batches_per_second INTEGER NOT NULL DEFAULT 10;"
+
+    # ── V1_0_10 : 구 수집기 설정 테이블 삭제 ─────────────────────────────
+    # [2026-04-22] ds_file_system_config / ds_database_config 가 단일 진실 공급원으로 전환
+    #              agent_collector_* 테이블은 더 이상 사용하지 않음
+    apply_inline_migration "1.0.10" \
+        "V1_0_10__drop_agent_collector_tables" \
+        "DROP TABLE IF EXISTS agent_collector_file_configs;
+         DROP TABLE IF EXISTS agent_collector_jdbc_configs;
+         DROP TABLE IF EXISTS agent_collector_configs;"
+
+    # ── V1_0_11 : mapped_storages 성능 인덱스 추가 ───────────────────────
+    # [2026-04-22] reg_dt·landing_record_id·processing_status·transaction_id 기반 인덱스
+    apply_inline_migration "1.0.11" \
+        "V1_0_11__add_mapped_storages_performance_indexes" \
+        "CREATE INDEX IF NOT EXISTS idx_mapped_storages_landing_reg_dt
+             ON public.mapped_storages (landing_record_id, reg_dt DESC);
+         CREATE INDEX IF NOT EXISTS idx_mapped_storages_reg_dt
+             ON public.mapped_storages (reg_dt DESC);
+         CREATE INDEX IF NOT EXISTS idx_mapped_storages_processing_status
+             ON public.mapped_storages (processing_status);
+         CREATE INDEX IF NOT EXISTS idx_mapped_storages_transaction_id
+             ON public.mapped_storages (transaction_id);"
+
+    # ── V1_0_12 : ds_database_config — 보조 증분 컬럼 추가 ──────────────
+    # [2026-04-22] 복합 키 기반 증분 수집 지원 (예: updated_at + seq_id 조합)
+    apply_inline_migration "1.0.12" \
+        "V1_0_12__add_secondary_incremental_column" \
+        "ALTER TABLE public.ds_database_config
+             ADD COLUMN IF NOT EXISTS secondary_incremental_column               VARCHAR(200),
+             ADD COLUMN IF NOT EXISTS secondary_incremental_column_type          VARCHAR(50),
+             ADD COLUMN IF NOT EXISTS secondary_incremental_column_initial_value VARCHAR(200),
+             ADD COLUMN IF NOT EXISTS last_secondary_processed_value             VARCHAR(200);"
 }
 
 # ─────────────────────────────────────────────────────────────

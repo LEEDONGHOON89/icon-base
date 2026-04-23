@@ -2,31 +2,6 @@
 
 ---
 
-## 작업 이력 참조
-
-작업 시작 전 최신 작업 이력을 확인하여 충돌 및 중복 작업을 예방한다.
-
-- **목록**: [`docs/work_list/INDEX.md`](docs/work_list/INDEX.md) — 전체 작업 이력 파일 목록
-- **상세**: `docs/work_list/YYYY-MM-DD_작업내용.md` — 날짜별 변경 상세
-
-작업 완료 후 해당 날짜의 작업 파일을 생성하고 INDEX.md에 추가한다.
-
----
-
-## TODO 목록 참조
-
-신규 기능 개발 작업 시 TODO 목록을 확인하여 기존 스펙과 중복·충돌을 방지한다.
-
-- **목록**: [`docs/todo_list/TODO.md`](docs/todo_list/TODO.md) — 전체 TODO 인덱스 (상태 관리)
-- **상세**: `docs/todo_list/todo-NNN_작업명.md` — 항목별 상세 스펙 (UI 구성, API, 구현 파일 목록)
-
-TODO 항목을 구현 완료한 경우:
-1. 해당 `todo-NNN_*.md` 파일의 상태를 `✅ 완료`로 변경
-2. `TODO.md` 인덱스에서 해당 행을 "완료 항목" 표로 이동
-3. `docs/work_list/YYYY-MM-DD_작업내용.md` 작업이력 파일 생성
-
----
-
 ## 아키텍처 문서 (작업 전 참조)
 
 icon 관련 기능 추가·수정 작업 시 아래 문서를 먼저 읽어 컨텍스트를 파악한다.
@@ -119,54 +94,6 @@ dto/                     → 요청/응답 DTO
 
 ---
 
-## DB 버전 관리 규칙
-
-### 버전 체계
-
-| 구분 | 버전 | 파일 | 설명 |
-|---|---|---|---|
-| 기준선 (baseline) | **1.0.0** | `db/init.sql` | 전체 스키마 초기화 — 신규 DB 생성 시 자동 적용 |
-| 증분 변경 | **1.x.x** | `db/migrations/V1_0_1__desc.sql` | 기존 DB에 증분 적용 |
-
-### 파일 명명 규칙
-
-```
-db/migrations/V{major}_{minor}_{patch}__{설명}.sql
-
-예시:
-  V1_0_1__add_user_role_column.sql
-  V1_0_2__create_notification_table.sql
-  V1_1_0__add_detection_context_table.sql
-```
-
-- 버전 자리수: major(1자리 이상).minor(0~9).patch(0~9)
-- 점(`.`) → 언더스코어(`_`)로 표기 (파일명에 점 사용 금지)
-- 설명은 영문 소문자 + 언더스코어
-- `icon_migrations` 테이블에 `1.0.1`, `1.0.2` 형태로 기록됨
-
-### 동작 방식
-
-```
-./icon.sh start
-  ├─ DB 없음 → db/init.sql 적용 (v1.0.0) → icon_migrations에 1.0.0 기록
-  └─ DB 있음 → db/migrations/V*.sql 순서 적용 (미적용 버전만)
-```
-
-### DB 변경 작업 절차
-
-1. `db/migrations/V1_0_x__설명.sql` 파일 작성
-2. `docs/architecture/db-tables.md` 업데이트
-3. `./deploy.sh backend vm` 으로 배포 (마이그레이션 파일 자동 전송)
-4. VM에서 `./icon.sh start` — 자동으로 미적용 마이그레이션만 실행
-
-### 주의사항
-
-- `db/init.sql`은 직접 수정하지 않는다 — 새 테이블은 반드시 마이그레이션 파일로 추가
-- 한 번 배포된 마이그레이션 파일의 내용을 수정하지 않는다 (체크섬 불일치 → 재적용 불가)
-- 마이그레이션 파일은 반드시 `IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` 등 멱등성 보장
-
----
-
 ## 코드 주석 규칙
 
 코드를 수정하거나 추가할 때는 반드시 변경 내용에 주석을 달아야 한다.
@@ -181,6 +108,63 @@ db/migrations/V{major}_{minor}_{patch}__{설명}.sql
 - 날짜는 `[YYYY-MM-DD]` 형식을 사용한다.
 - 주석은 변경된 코드 바로 위에 위치한다.
 - 언어에 맞는 주석 문법을 사용한다 (Java/JS: `//`, XML: `<!-- -->`, Properties: `#`).
+
+---
+
+## Git 브런치 규칙
+
+> **이 규칙은 절대 예외 없이 반드시 준수한다.**
+
+### 브런치 전략
+
+| 브런치 | 용도 | push 가능 여부 |
+|---|---|---|
+| `leedh` | 작업 브런치 — 모든 개발·수정 작업 | ✅ 항상 허용 |
+| `main` | 배포 브런치 — 머지 요청 시에만 변경 | ❌ 직접 push 절대 금지 |
+
+### 일반 작업 규칙
+
+- 모든 작업은 `leedh` 브런치에서 수행하고 `leedh`에만 push한다
+- push 전 반드시 현재 브런치가 `leedh`인지 확인한다
+
+```bash
+# push 전 브런치 확인
+git branch --show-current   # 반드시 leedh 출력 확인
+
+# push 실행
+git push origin leedh
+```
+
+### main 브런치 머지 규칙
+
+- **사용자가 명시적으로 머지 요청을 한 경우에만** `leedh → main` 머지를 진행한다
+- 머지 절차:
+```bash
+# 1. leedh 최신 상태 확인
+git checkout leedh
+git status
+
+# 2. main 브런치로 전환
+git checkout main
+
+# 3. leedh → main 머지
+git merge leedh --no-ff -m "Merge branch 'leedh' into main"
+
+# 4. main push
+git push origin main
+
+# 5. 작업 브런치로 복귀
+git checkout leedh
+```
+
+### 절대 실행 금지
+
+```bash
+# 머지 요청 없이 아래 명령은 절대 실행하지 않는다
+git push origin main
+git push --force origin main
+git push -f origin main
+```
 
 ---
 

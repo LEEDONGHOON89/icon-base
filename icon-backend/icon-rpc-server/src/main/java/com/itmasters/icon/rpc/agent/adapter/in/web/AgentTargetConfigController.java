@@ -9,7 +9,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -71,23 +70,12 @@ public class AgentTargetConfigController {
         ));
     }
 
+    // [2026-04-21] payload 빌드를 AgentRpcWebSocketHandler.buildConfigPayload()로 통일
     private boolean pushToAgent(String agentId, AgentTargetConfigDto.Info cfg) {
         if (!wsHandler.isAgentConnected(agentId)) {
             log.info("[TargetConfig] Agent not connected, skipping push: agentId={}", agentId);
             return false;
         }
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("targetConfigId",   cfg.getTargetConfigId());
-        payload.put("rpcEndpoint",      cfg.getRpcEndpoint());
-        payload.put("compress",         cfg.isCompress());
-        payload.put("tlsKeystorePath",  cfg.getTlsKeystorePath());
-        payload.put("tlsTruststorePath",cfg.getTlsTruststorePath());
-        payload.put("queueCapacity",       cfg.getQueueCapacity());
-        payload.put("maxBatchSize",        cfg.getMaxBatchSize());
-        payload.put("maxBatchMs",          cfg.getMaxBatchMs());
-        payload.put("maxBatchBytes",       cfg.getMaxBatchBytes());
-        // [2026-04-22] maxBatchesPerSecond 추가
-        payload.put("maxBatchesPerSecond", cfg.getMaxBatchesPerSecond());
-        return wsHandler.pushConfigUpdate(agentId, payload);
+        return wsHandler.pushConfigUpdate(agentId, AgentRpcWebSocketHandler.buildConfigPayload(cfg));
     }
 }
