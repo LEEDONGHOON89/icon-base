@@ -325,7 +325,7 @@ function RuleForm({
                 className="bg-gray-50"
               />
             ) : (
-              {/* [2026-04-23] AGG_ 접두사 필수 검증 추가 (권장 → 필수) */}
+              // [2026-04-23] AGG_ 접두사 필수 검증 추가 (권장 → 필수)
               <Input
                 label="룰 ID (AGG_ 접두사 필수)"
                 {...register("ruleId", {
