@@ -30,6 +30,8 @@ public class AgentTargetConfigDto {
         private int maxBatchSize;
         private long maxBatchMs;
         private long maxBatchBytes;
+        // [2026-04-23] maxBatchesPerSecond 필드 추가 (Entity와 동기화)
+        private int maxBatchesPerSecond;
         private boolean isActive;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
@@ -50,6 +52,8 @@ public class AgentTargetConfigDto {
                     .maxBatchSize(e.getMaxBatchSize())
                     .maxBatchMs(e.getMaxBatchMs())
                     .maxBatchBytes(e.getMaxBatchBytes())
+                    // [2026-04-23] maxBatchesPerSecond 매핑 추가
+                    .maxBatchesPerSecond(e.getMaxBatchesPerSecond())
                     .isActive(e.isActive())
                     .createdAt(e.getCreatedAt())
                     .updatedAt(e.getUpdatedAt())
@@ -70,6 +74,8 @@ public class AgentTargetConfigDto {
         private int maxBatchSize = 500;
         private long maxBatchMs = 2000L;
         private long maxBatchBytes = 1048576L;
+        // [2026-04-23] maxBatchesPerSecond 필드 추가 (0 = 무제한, 기본값 10)
+        private int maxBatchesPerSecond = 10;
     }
 
     @Getter
@@ -84,5 +90,7 @@ public class AgentTargetConfigDto {
         private int maxBatchSize = 500;
         private long maxBatchMs = 2000L;
         private long maxBatchBytes = 1048576L;
+        // [2026-04-23] maxBatchesPerSecond 필드 추가 (0 = 무제한, 기본값 10)
+        private int maxBatchesPerSecond = 10;
     }
 }

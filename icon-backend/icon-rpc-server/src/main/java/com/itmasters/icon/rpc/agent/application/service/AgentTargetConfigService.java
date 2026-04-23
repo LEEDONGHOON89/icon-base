@@ -48,13 +48,15 @@ public class AgentTargetConfigService {
         }
 
         String id = TsidCreator.getTsid256().toString();
+        // [2026-04-23] maxBatchesPerSecond 파라미터 누락 수정 (빌드 에러 해결)
         AgentTargetConfigEntity entity = AgentTargetConfigEntity.create(
                 id, agentId, req.getTargetId(),
                 req.getRpcEndpoint(), req.isCompress(),
                 req.getTlsKeystorePath(), req.getTlsKeystorePassword(),
                 req.getTlsTruststorePath(), req.getTlsTruststorePassword(),
                 req.getQueueCapacity(), req.getMaxBatchSize(),
-                req.getMaxBatchMs(), req.getMaxBatchBytes());
+                req.getMaxBatchMs(), req.getMaxBatchBytes(),
+                req.getMaxBatchesPerSecond());
 
         targetConfigJpaRepository.save(entity);
         log.info("[RPC] TargetConfig created - agentId={}, targetId={}, id={}", agentId, req.getTargetId(), id);
@@ -75,11 +77,13 @@ public class AgentTargetConfigService {
         String truststorePassword = (req.getTlsTruststorePassword() == null || req.getTlsTruststorePassword().isBlank())
                 ? entity.getTlsTruststorePassword()
                 : req.getTlsTruststorePassword();
+        // [2026-04-23] maxBatchesPerSecond 파라미터 누락 수정 (빌드 에러 해결)
         entity.update(entity.getRpcEndpoint(), req.isCompress(),
                 req.getTlsKeystorePath(), keystorePassword,
                 req.getTlsTruststorePath(), truststorePassword,
                 req.getQueueCapacity(), req.getMaxBatchSize(),
-                req.getMaxBatchMs(), req.getMaxBatchBytes());
+                req.getMaxBatchMs(), req.getMaxBatchBytes(),
+                req.getMaxBatchesPerSecond());
 
         targetConfigJpaRepository.save(entity);
         log.info("[RPC] TargetConfig updated - id={}", targetConfigId);
