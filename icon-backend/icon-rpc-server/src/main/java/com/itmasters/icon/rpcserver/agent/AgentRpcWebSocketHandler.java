@@ -314,6 +314,37 @@ public class AgentRpcWebSocketHandler extends AbstractWebSocketHandler {
         }
     }
 
+    // [2026-04-23] 에이전트에 COLLECTOR_RESET 메시지 전송 - 수집기 위치/하이워터마크 초기화 요청
+    /**
+     * Pushes COLLECTOR_RESET to the agent so it deletes positions.dat / watermark.dat.
+     *
+     * @param agentId     연결된 에이전트 ID
+     * @param targetId    에이전트 target ID (config 식별용)
+     * @param collectorId 초기화할 수집기 ID (예: "DS_xxx")
+     * @return true if the message was sent successfully, false if agent is not connected
+     */
+    public boolean sendCollectorReset(String agentId, String targetId, String collectorId) {
+        WebSocketSession session = agentSessionMap.get(agentId);
+        if (session == null || !session.isOpen()) {
+            log.warn("[RPC] Cannot push COLLECTOR_RESET - agent not connected: agentId={}", agentId);
+            return false;
+        }
+        try {
+            Map<String, Object> payload = new java.util.HashMap<>();
+            payload.put("type",        "COLLECTOR_RESET");
+            payload.put("targetId",    targetId);
+            payload.put("collectorId", collectorId);
+            String json = objectMapper.writeValueAsString(payload);
+            session.sendMessage(new TextMessage(json));
+            log.info("[RPC] COLLECTOR_RESET pushed to agentId={}, targetId={}, collectorId={}",
+                    agentId, targetId, collectorId);
+            return true;
+        } catch (IOException e) {
+            log.error("[RPC] Failed to push COLLECTOR_RESET to agentId={}: {}", agentId, e.getMessage());
+            return false;
+        }
+    }
+
     private String decompress(byte[] compressed) throws IOException {
         try (GZIPInputStream gzip = new GZIPInputStream(new ByteArrayInputStream(compressed))) {
             return new String(gzip.readAllBytes(), StandardCharsets.UTF_8);
