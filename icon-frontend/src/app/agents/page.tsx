@@ -147,6 +147,7 @@ function TargetConfigPanel({ agent, onClose }: { agent: Agent; onClose: () => vo
       maxBatchSize:         cfg.maxBatchSize,
       maxBatchMs:           cfg.maxBatchMs,
       maxBatchBytes:        cfg.maxBatchBytes,
+      maxBatchesPerSecond:  cfg.maxBatchesPerSecond,
     });
   };
 
