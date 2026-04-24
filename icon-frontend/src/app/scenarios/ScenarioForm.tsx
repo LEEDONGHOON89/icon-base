@@ -76,21 +76,22 @@ export default function ScenarioForm({
   });
 
   // 위험 레벨 메타데이터 조회
-  const { data: riskLevels = [] } = useQuery({
+  // [2026-04-24] isSuccess 추가 — 데이터가 0건이어도 쿼리 완료 여부로 판단
+  const { data: riskLevels = [], isSuccess: riskLevelsReady } = useQuery({
     queryKey: ["metadata", "riskLevels"],
     queryFn: fetchRiskLevels,
     staleTime: 5 * 60 * 1000, // 5분간 캐시
   });
 
   // 엔티티 타입 메타데이터 조회
-  const { data: entityTypes = [] } = useQuery({
+  const { data: entityTypes = [], isSuccess: entityTypesReady } = useQuery({
     queryKey: ["metadata", "entityTypes"],
     queryFn: fetchEntityTypes,
     staleTime: 5 * 60 * 1000, // 5분간 캐시
   });
 
   // 탐지 영역 조회
-  const { data: detectionAreas = [] } = useQuery({
+  const { data: detectionAreas = [], isSuccess: detectionAreasReady } = useQuery({
     queryKey: ["detectionAreas", "active"],
     queryFn: fetchActiveDetectionAreas,
     staleTime: 5 * 60 * 1000, // 5분간 캐시
@@ -135,11 +136,13 @@ export default function ScenarioForm({
     },
   });
 
-  // 메타데이터 로딩 상태 확인
-  const isMetadataLoaded = riskLevels.length > 0 && entityTypes.length > 0 && detectionAreas.length > 0;
+  // [2026-04-24] 메타데이터 로딩 상태 확인 — length > 0 → isSuccess 로 변경
+  // 이전 조건(length > 0)은 탐지영역 등 데이터가 0건이면 영원히 false가 되어 폼 초기화 불가 버그 존재
+  // isSuccess: 쿼리가 정상 완료되면 true (빈 배열이어도 OK)
+  const isMetadataLoaded = riskLevelsReady && entityTypesReady && detectionAreasReady;
 
   // 시나리오 데이터 로드 시 폼 초기화 (수정 모드)
-  // 메타데이터가 모두 로드된 후에만 reset 호출 (select option이 렌더링된 후 값 설정)
+  // [2026-04-24] isMetadataLoaded = isSuccess 기준으로 변경 — 빈 배열이어도 쿼리 완료 시 reset 실행
   useEffect(() => {
     if (scenario && isMetadataLoaded) {
       console.log("🔍 [ScenarioForm] Initializing form with scenario (metadata loaded):", {
@@ -192,7 +195,8 @@ export default function ScenarioForm({
         setEntityFilters([]);
       }
     }
-  }, [scenario, reset, isMetadataLoaded, riskLevels.length, entityTypes.length, detectionAreas.length]);
+  // [2026-04-24] 의존배열에서 length 항목 제거 — isMetadataLoaded(isSuccess) 만으로 충분
+  }, [scenario, reset, isMetadataLoaded]);
 
   // entityFilters 변경 시 JSON으로 변환하여 폼에 반영
   useEffect(() => {

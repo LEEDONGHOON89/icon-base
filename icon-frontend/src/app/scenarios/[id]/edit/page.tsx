@@ -58,6 +58,7 @@ export default function EditScenarioPage() {
   });
 
   // 폼 제출 핸들러
+  // [2026-04-24] riskLevelId / detectionAreaId / primaryEntityType / isActive / dedupMinutes 누락 필드 추가
   const handleSubmit = async (data: ScenarioFormData) => {
     if (!scenarioId) {
       toast.error("시나리오 ID가 없습니다.");
@@ -67,7 +68,12 @@ export default function EditScenarioPage() {
     const request: UpdateScenarioRequest = {
       scenarioName: data.scenarioName,
       description: data.description,
+      riskLevelId: data.riskLevelId || undefined,
+      detectionAreaId: data.detectionAreaId || undefined,
+      primaryEntityType: data.primaryEntityType || undefined,
       entityFilterJson: data.entityFilterJson,
+      isActive: data.isActive,
+      dedupMinutes: (data.dedupMinutes != null && !isNaN(data.dedupMinutes)) ? data.dedupMinutes : 0,
       rules: data.rules.map((rule) => ({
         ruleId: rule.ruleId,
         orderNo: rule.orderNo,
