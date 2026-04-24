@@ -322,21 +322,17 @@ export default function ParsersPage() {
 
   // ─── JSX ────────────────────────────────────────────────────────────────
 
+  // [2026-04-24] 레이아웃을 표준 필드 화면 기준으로 통일
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="p-6 space-y-6">
       {/* 헤더 */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-blue-100 rounded-lg">
-            <ScissorsIcon className="h-6 w-6 text-blue-600" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">파서 관리</h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              텍스트 필드를 구분자·고정폭·정규식으로 분리하는 파서를 관리합니다.
-              파서를 데이터소스에 연결하면 수집 시 자동으로 필드를 추출합니다.
-            </p>
-          </div>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">파서 관리</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            텍스트 필드를 구분자·고정폭·정규식으로 분리하는 파서를 관리합니다.
+            파서를 데이터소스에 연결하면 수집 시 자동으로 필드를 추출합니다. (총 {parsers.length}개)
+          </p>
         </div>
         <button
           onClick={openCreate}
@@ -347,53 +343,67 @@ export default function ParsersPage() {
         </button>
       </div>
 
-      {/* 검색 */}
-      <div className="relative mb-4">
-        <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-        <input
-          type="text"
-          placeholder="파서명, 설명, 타입으로 검색..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
-
-      {/* 타입별 통계 */}
-      <div className="flex gap-3 mb-4">
-        {(["DELIMITER", "FIXED_WIDTH", "REGEX"] as ParserType[]).map((t) => (
-          <span key={t} className={`text-xs px-3 py-1 rounded-full font-medium ${PARSER_TYPE_COLORS[t]}`}>
-            {PARSER_TYPE_LABELS[t]}: {parsers.filter((p) => p.parserType === t).length}
-          </span>
-        ))}
+      {/* 검색 + 타입 통계 */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 space-y-3">
+        <div className="relative">
+          <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="파서명, 설명, 타입으로 검색..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-10 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+          />
+          {searchTerm && (
+            <button
+              onClick={() => setSearchTerm("")}
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+        {/* 타입별 통계 배지 */}
+        <div className="flex gap-2">
+          {(["DELIMITER", "FIXED_WIDTH", "REGEX"] as ParserType[]).map((t) => (
+            <span key={t} className={`text-xs px-3 py-1 rounded-full font-medium ${PARSER_TYPE_COLORS[t]}`}>
+              {PARSER_TYPE_LABELS[t]}: {parsers.filter((p) => p.parserType === t).length}
+            </span>
+          ))}
+        </div>
       </div>
 
       {/* 목록 */}
       {isLoading ? (
-        <div className="text-center py-10 text-gray-400">로딩 중...</div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 flex justify-center items-center h-48">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600" />
+        </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-10 text-gray-400">
-          {searchTerm ? "검색 결과가 없습니다." : "등록된 파서가 없습니다."}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 py-12 text-center text-gray-400">
+          <ScissorsIcon className="h-10 w-10 mx-auto mb-3 opacity-30" />
+          <p className="text-sm">{searchTerm ? "검색 결과가 없습니다." : "등록된 파서가 없습니다."}</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-3 py-3 w-8"></th>
-                <th className="text-left px-4 py-3 font-semibold text-gray-600">파서명</th>
-                <th className="text-left px-4 py-3 font-semibold text-gray-600">타입</th>
-                <th className="text-left px-4 py-3 font-semibold text-gray-600">파싱 대상 필드</th>
-                <th className="text-left px-4 py-3 font-semibold text-gray-600">설명</th>
-                <th className="text-center px-4 py-3 font-semibold text-gray-600">규칙</th>
-                <th className="text-center px-4 py-3 font-semibold text-gray-600">상태</th>
-                <th className="text-center px-4 py-3 font-semibold text-gray-600">작업</th>
+                <th className="px-3 py-4 w-8"></th>
+                <th className="text-left px-4 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">파서명</th>
+                <th className="text-left px-4 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">타입</th>
+                <th className="text-left px-4 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">파싱 대상 필드</th>
+                <th className="text-left px-4 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">설명</th>
+                <th className="text-center px-4 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">규칙</th>
+                <th className="text-center px-4 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">상태</th>
+                <th className="text-right px-4 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider w-24">작업</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-gray-200">
               {filtered.map((p) => (
                 <>
-                  <tr key={p.parserId} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                  <tr key={p.parserId} className="hover:bg-gray-50 transition-colors">
                     <td className="px-3 py-3">
                       <button
                         onClick={() => setExpandedId(expandedId === p.parserId ? null : p.parserId)}
