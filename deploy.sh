@@ -268,7 +268,8 @@ deploy_frontend() {
 deploy_iconsh() {
     section "icon.sh 배포"
     scp_send "$BASE_DIR/icon.sh" "$S_USER@$S_HOST:$S_DIR/icon.sh"
-    ssh_run "chmod +x '$S_DIR/icon.sh'"
+    # [2026-04-24] Windows CRLF → LF 변환 후 실행 권한 부여 (개행 오류 방지)
+    ssh_run "sed -i 's/\r//' '$S_DIR/icon.sh' && chmod +x '$S_DIR/icon.sh'"
     info "icon.sh 배포 완료"
 }
 
