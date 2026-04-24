@@ -350,7 +350,8 @@ export default function ScenarioForm({
     }
 
     // 가용 룰 검증
-    const validIds = new Set((aggsArray as AggregateDef[]).map((a) => a.ruleId));
+    // [2026-04-24] AggregateDef → Rule 타입으로 교체
+    const validIds = new Set((aggsArray as Rule[]).map((a) => a.ruleId));
     const invalid = rules.find((r) => !validIds.has(r.ruleId));
     if (invalid) {
       toast.error(`정의되지 않은 룰이 포함되어 저장할 수 없습니다: ${invalid.ruleId}`);
@@ -623,24 +624,23 @@ export default function ScenarioForm({
                       render={({ field }) => (
                         <>
                           {field.value.map((rule, index) => {
-                            // 🔍 디버깅: 룰 매칭 확인
+                            // [2026-04-24] AggregateDef → Rule 타입으로 교체, 디버그 로그 유지
                             console.log(`🔍 [ScenarioForm] Rule #${index + 1} lookup:`, {
                               ruleId: rule.ruleId,
                               aggsArrayLength: aggsArray.length,
-                              aggsArrayIds: (aggsArray as AggregateDef[]).map((a: AggregateDef) => a.ruleId),
-                              hasMatchingId: (aggsArray as AggregateDef[]).some((a: AggregateDef) => a.ruleId === rule.ruleId),
+                              aggsArrayIds: (aggsArray as Rule[]).map((a: Rule) => a.ruleId),
+                              hasMatchingId: (aggsArray as Rule[]).some((a: Rule) => a.ruleId === rule.ruleId),
                             });
 
-                            const selectedAgg = (aggsArray as AggregateDef[]).find((a: AggregateDef) => a.ruleId === rule.ruleId);
-                            
-                            // 🔍 디버깅: 매칭 결과 확인
+                            const selectedAgg = (aggsArray as Rule[]).find((a: Rule) => a.ruleId === rule.ruleId);
+
                             console.log(`🔍 [ScenarioForm] Rule #${index + 1} result:`, {
                               ruleId: rule.ruleId,
                               found: !!selectedAgg,
                               selectedAgg: selectedAgg,
                             });
 
-                            const displayName = selectedAgg?.sensorName || selectedAgg?.name || rule.ruleId;
+                            const displayName = selectedAgg?.name || rule.ruleId;
                             const isMissing = !selectedAgg;
                             return (
                               <div key={rule.ruleId} className="relative">
