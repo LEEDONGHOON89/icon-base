@@ -15,7 +15,9 @@ import {
   type EntityTypeMetadata,
 } from "./api";
 import { fetchActiveDetectionAreas, type DetectionArea } from "@/app/domain-settings/api";
-import { fetchAggregates, type AggregateDef, labelAggregateOperator } from "@/app/detections/api";
+// [2026-04-24] fetchAggregates(/api/v1/sensors)가 센서를 반환해 룰 목록이 비었던 버그 수정 → fetchActiveRules(/api/v1/rules/active) 로 교체
+import { labelAggregateOperator } from "@/app/detections/api";
+import { fetchActiveRules, type Rule } from "@/app/rules/api";
 
 import { formatMinutes } from "@/utils/timeFormat";
 import { useErrorHandling } from "@/hooks/useErrorHandling";
@@ -64,10 +66,13 @@ export default function ScenarioForm({
   const [ruleFilter, setRuleFilter] = useState("");
   const [entityFilters, setEntityFilters] = useState<EntityFilterCondition[]>([]);
 
-  // 사용 가능한 룰 목록 조회 (활성화된 룰만, 페이지네이션 없이 전체)
+  // [2026-04-24] /api/v1/rules/active 에서 활성화된 룰 목록 조회
   const { data: availableAggregates = [], isLoading: aggregatesLoading } = useQuery({
-    queryKey: ["aggregates", "all"],
-    queryFn: fetchAggregates,
+    queryKey: ["rules", "active"],
+    queryFn: async () => {
+      const res = await fetchActiveRules();
+      return res.data || [];
+    },
   });
 
   // 위험 레벨 메타데이터 조회
@@ -202,7 +207,7 @@ export default function ScenarioForm({
 
 
   // 룰 추가 (사용 가능한 룰에서 선택)
-  const addRule = (agg: AggregateDef) => {
+  const addRule = (agg: Rule) => {
     const currentRules = watch("rules");
 
     // 이미 추가된 룰인지 확인
@@ -221,7 +226,7 @@ export default function ScenarioForm({
     };
 
     setValue("rules", [...currentRules, newRule]);
-    toast.success(`"${agg.sensorName || agg.name}" 룰이 추가되었습니다.`);
+    toast.success(`"${agg.name}" 룰이 추가되었습니다.`);
   };
 
   // 룰 제거
@@ -237,13 +242,11 @@ export default function ScenarioForm({
     setValue("rules", updatedRules);
   };
 
-  // 룰 필터링
-  const aggsArray = Array.isArray(availableAggregates) ? availableAggregates : (availableAggregates as any).data || [];
-  // 비활성 룰 숨김
-  const activeAggs = (aggsArray as AggregateDef[]).filter((a) => a.isActive !== false);
-  const filteredRules = activeAggs.filter((agg: AggregateDef) => {
+  // [2026-04-24] Rule 타입으로 변경, sensorName 필드 제거 (Rule은 name 필드 사용)
+  const aggsArray = Array.isArray(availableAggregates) ? availableAggregates : [];
+  const filteredRules = (aggsArray as Rule[]).filter((agg: Rule) => {
     const searchLower = ruleFilter.toLowerCase();
-    const name = agg.sensorName || agg.name || '';
+    const name = agg.name || '';
     const ruleId = agg.ruleId || '';
     return name.toLowerCase().includes(searchLower) || ruleId.toLowerCase().includes(searchLower);
   });
@@ -252,7 +255,7 @@ export default function ScenarioForm({
   const handleFormSubmit = async (data: ScenarioFormData) => {
 
     // 가용 룰 검증: 존재하지 않는 룰 ID가 포함되면 저장 중단
-    const validIds = new Set((aggsArray as AggregateDef[]).map((a) => a.ruleId));
+    const validIds = new Set((aggsArray as Rule[]).map((a) => a.ruleId));
     const invalid = data.rules.find((r) => !validIds.has(r.ruleId));
     if (invalid) {
       toast.error(`정의되지 않은 룰이 포함되어 저장할 수 없습니다: ${invalid.ruleId}`);
@@ -754,7 +757,7 @@ export default function ScenarioForm({
                     {ruleFilter ? "검색 결과가 없습니다." : "사용 가능한 룰이 없습니다."}
                   </p>
                 ) : (
-                  filteredRules.map((agg: AggregateDef) => {
+                  filteredRules.map((agg: Rule) => {
                     const isAdded = watchedRules.some(
                       (r) => r.ruleId === agg.ruleId
                     );
@@ -771,7 +774,7 @@ export default function ScenarioForm({
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
                             <h4 className="font-semibold text-gray-800 text-sm mb-1">
-                              {agg.sensorName || agg.name}
+                              {agg.name}
                             </h4>
                             <div className="mb-1">
                               <span className="text-xs text-gray-500 font-mono">{agg.ruleId}</span>

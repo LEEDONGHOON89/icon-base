@@ -513,8 +513,9 @@ start_backend() {
 
     mkdir -p "$LOG_DIR"
     section "백엔드 기동"
+    # [2026-04-24] stdout을 /dev/null로 버려 콘솔 로그 중복 방지 (FileAppender → logs/icon-api.log에만 기록)
     nohup "$JAVA_BIN" "${JAVA_OPTS[@]}" -jar "$JAR_PATH" \
-        > "$LOG_DIR/icon-backend.log" 2>&1 &
+        > /dev/null 2>&1 &
     sleep 3
 
     PID=$(pgrep -f "$JAR_NAME" 2>/dev/null || true)
