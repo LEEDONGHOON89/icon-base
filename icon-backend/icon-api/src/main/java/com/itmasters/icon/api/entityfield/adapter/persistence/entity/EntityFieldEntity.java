@@ -14,7 +14,8 @@ import lombok.Setter;
 @Table(name = "entity_fields")
 @Getter
 @Setter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
+// [2026-04-24] CRUD 생성 시 직접 인스턴스화 필요 → PROTECTED → PUBLIC 으로 변경
+@NoArgsConstructor
 public class EntityFieldEntity extends Auditable {
 
     @Id
