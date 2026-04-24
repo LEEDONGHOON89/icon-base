@@ -32,6 +32,9 @@ import {
 } from "@heroicons/react/24/outline";
 import { useState } from "react";
 import { ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
+// [2026-04-24] 탭 기능 구현 - 탭 상태 atom 및 TabBar 컴포넌트 임포트
+import { tabsAtom, activeTabPathAtom } from "@/atoms/tabsAtom";
+import TabBar from "@/components/TabBar";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -43,6 +46,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [auth, setAuth] = useAtom(authAtom);
   const [, setUser] = useAtom(userAtom);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  // [2026-04-24] 탭 상태 관리
+  const [, setTabs] = useAtom(tabsAtom);
+  const [, setActiveTabPath] = useAtom(activeTabPathAtom);
 
   // 메뉴 검색 autocomplete 상태
   const [searchQuery, setSearchQuery] = useState("");
@@ -330,6 +336,29 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     return items;
   }, []);
 
+  // [2026-04-24] pathname 변경 시 탭 자동 추가 (중복 방지)
+  React.useEffect(() => {
+    if (!pathname || pathname === "/login") return;
+
+    // 현재 경로에 해당하는 메뉴 항목 조회
+    const matched = flattenedMenuItems.find(
+      (item) =>
+        pathname === item.href ||
+        (item.href !== "/" && pathname.startsWith(item.href + "/"))
+    );
+
+    const label = matched?.name ?? pathname;
+    const parentLabel = matched?.parentName;
+
+    setActiveTabPath(pathname);
+    setTabs((prev) => {
+      // 이미 같은 경로의 탭이 있으면 추가하지 않음
+      if (prev.some((t) => t.path === pathname)) return prev;
+      return [...prev, { path: pathname, label, parentLabel }];
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
   // 검색 필터링
   const filteredMenuItems = React.useMemo(() => {
     if (!searchQuery.trim()) return [];
@@ -610,8 +639,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0 lg:ml-72">
         {/* Header */}
+        {/* [2026-04-24] 탭 바 포함 — 헤더 높이가 h-16 + TabBar(h-9) 로 확장됨 */}
         <header className="bg-white shadow-sm border-b border-gray-200 lg:pl-0 pl-16 sticky top-0 z-20">
-          <div className="flex items-center justify-between h-16 px-6">
+          <div className="flex items-center justify-between h-16 px-6 border-b border-gray-100">
             {/* 검색 입력 */}
             <div className="flex-1 max-w-md relative">
               <div className="relative">
@@ -682,6 +712,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               </div>
             </div>
           </div>
+          {/* [2026-04-24] 탭 바 */}
+          <TabBar />
         </header>
 
         {/* Page Content */}
