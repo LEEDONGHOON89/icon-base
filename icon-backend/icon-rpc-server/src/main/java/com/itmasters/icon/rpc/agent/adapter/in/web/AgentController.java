@@ -4,6 +4,7 @@ import com.itmasters.icon.rpc.agent.adapter.out.persistence.repository.AgentJpaR
 import com.itmasters.icon.rpc.agent.application.dto.AgentDto;
 import com.itmasters.icon.rpc.agent.application.service.AgentRegistrationService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -51,5 +52,18 @@ public class AgentController {
             @PathVariable String agentId,
             @RequestParam(defaultValue = "20") int limit) {
         return ResponseEntity.ok(registrationService.getSessions(agentId, limit));
+    }
+
+    // [2026-04-24] 에이전트 삭제 — DISCONNECTED / INACTIVE / PENDING_CONFIG 상태만 허용
+    @DeleteMapping("/{agentId}")
+    public ResponseEntity<Void> delete(@PathVariable String agentId) {
+        try {
+            registrationService.deleteAgent(agentId);
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.notFound().build();
+        } catch (IllegalStateException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).build();
+        }
     }
 }

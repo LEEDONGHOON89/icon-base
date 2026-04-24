@@ -7,6 +7,7 @@ import com.itmasters.icon.rpc.agent.adapter.out.persistence.repository.AgentJpaR
 import com.itmasters.icon.rpc.agent.adapter.out.persistence.repository.AgentSessionJpaRepository;
 import com.itmasters.icon.rpc.agent.adapter.out.persistence.repository.AgentTargetConfigJpaRepository;
 import com.itmasters.icon.rpc.agent.application.dto.AgentDto;
+import com.itmasters.icon.rpc.agent.domain.AgentStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -128,6 +129,28 @@ public class AgentRegistrationService {
                     session.updateHeartbeat();
                     agentSessionJpaRepository.save(session);
                 });
+    }
+
+    /**
+     * [2026-04-24] 에이전트 삭제.
+     * ACTIVE 상태(연결 중)인 에이전트는 삭제 불가.
+     * agent_sessions 는 FK 없으므로 수동 삭제, agent_target_configs 는 DB CASCADE 로 자동 삭제.
+     * 삭제 후 동일 agentId 로 재접속 시 processHandshake upsert 로 신규 레코드 생성됨.
+     */
+    @Transactional
+    public void deleteAgent(String agentId) {
+        AgentEntity agent = agentJpaRepository.findById(agentId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 에이전트: " + agentId));
+
+        if (agent.getStatus() == AgentStatus.ACTIVE) {
+            throw new IllegalStateException("연결 중인 에이전트는 삭제할 수 없습니다. 에이전트를 먼저 중지하세요.");
+        }
+
+        agentSessionJpaRepository.deleteByAgentId(agentId);
+        agentTargetConfigJpaRepository.deleteByAgentId(agentId);
+        agentJpaRepository.deleteById(agentId);
+
+        log.info("[RPC] Agent deleted - agentId={}, status={}", agentId, agent.getStatus());
     }
 
     private static String nullIfBlank(String s) {

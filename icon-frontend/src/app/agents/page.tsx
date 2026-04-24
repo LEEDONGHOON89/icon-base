@@ -5,12 +5,14 @@ import {
   ArrowPathIcon,
   CheckCircleIcon,
   ChevronRightIcon,
+  CircleStackIcon,
   ClockIcon,
   ComputerDesktopIcon,
   ExclamationCircleIcon,
   MinusCircleIcon,
   PaperAirplaneIcon,
   ServerStackIcon,
+  TrashIcon,
   XCircleIcon,
 } from "@heroicons/react/24/outline";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -19,10 +21,13 @@ import { toast } from "react-hot-toast";
 import {
   Agent,
   AgentSession,
+  AgentSnapshotItem,
   AgentStatus,
   AgentTargetConfig,
   AgentTargetConfigUpdateRequest,
+  deleteAgent,
   fetchAgentSessions,
+  fetchAgentSnapshot,
   fetchAgentTargetConfigs,
   fetchAgents,
   pushAgentTargetConfig,
@@ -108,6 +113,104 @@ function SessionModal({ agent, onClose }: { agent: Agent; onClose: () => void })
                 ))}
               </tbody>
             </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Collector list modal ─────────────────────────────────
+// [2026-04-24] 에이전트에 설정된 수집기 목록 조회 (FILE / JDBC)
+function CollectorListModal({ agent, onClose }: { agent: Agent; onClose: () => void }) {
+  const { data: collectors = [], isLoading } = useQuery({
+    queryKey: ["agentSnapshot", agent.agentId],
+    queryFn: () => fetchAgentSnapshot(agent.agentId),
+  });
+
+  const fileCollectors = collectors.filter((c: AgentSnapshotItem) => c.type === "FILE");
+  const jdbcCollectors = collectors.filter((c: AgentSnapshotItem) => c.type === "JDBC");
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <div className="flex items-center gap-2">
+            <CircleStackIcon className="h-5 w-5 text-gray-500" />
+            <h2 className="text-base font-semibold text-gray-900">
+              수집기 목록 — {agent.displayName || agent.agentId}
+            </h2>
+            <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+              총 {collectors.length}개
+            </span>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl font-bold">×</button>
+        </div>
+        <div className="overflow-y-auto flex-1 px-6 py-4 space-y-5">
+          {isLoading ? (
+            <p className="text-sm text-gray-500 text-center py-8">로딩 중…</p>
+          ) : collectors.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-8">등록된 수집기가 없습니다.</p>
+          ) : (
+            <>
+              {fileCollectors.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                    FILE 수집기 ({fileCollectors.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {fileCollectors.map((c: AgentSnapshotItem) => (
+                      <div key={c.id} className="border border-gray-200 rounded-xl p-3 text-xs">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-semibold text-gray-800">{c.name}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-gray-400">{c.id}</span>
+                            <span className={`px-1.5 py-0.5 rounded-full font-medium ${c.enabled ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"}`}>
+                              {c.enabled ? "활성" : "비활성"}
+                            </span>
+                          </div>
+                        </div>
+                        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-600">
+                          <div><dt className="text-gray-400 inline">경로 </dt><dd className="inline font-mono">{c.path || "-"}</dd></div>
+                          <div><dt className="text-gray-400 inline">파일 </dt><dd className="inline font-mono">{c.file || "-"}</dd></div>
+                          <div><dt className="text-gray-400 inline">형식 </dt><dd className="inline">{c.format || "-"}</dd></div>
+                          <div><dt className="text-gray-400 inline">인코딩 </dt><dd className="inline">{c.charset || "-"}</dd></div>
+                          <div><dt className="text-gray-400 inline">폴링 간격 </dt><dd className="inline">{c.pollIntervalMs}ms</dd></div>
+                        </dl>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {jdbcCollectors.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                    JDBC 수집기 ({jdbcCollectors.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {jdbcCollectors.map((c: AgentSnapshotItem) => (
+                      <div key={c.id} className="border border-gray-200 rounded-xl p-3 text-xs">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-semibold text-gray-800">{c.name}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-gray-400">{c.id}</span>
+                            <span className={`px-1.5 py-0.5 rounded-full font-medium ${c.enabled ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"}`}>
+                              {c.enabled ? "활성" : "비활성"}
+                            </span>
+                          </div>
+                        </div>
+                        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-600">
+                          <div className="col-span-2"><dt className="text-gray-400 inline">URL </dt><dd className="inline font-mono break-all">{c.url || "-"}</dd></div>
+                          <div><dt className="text-gray-400 inline">사용자 </dt><dd className="inline">{c.username || "-"}</dd></div>
+                          <div><dt className="text-gray-400 inline">증분 컬럼 </dt><dd className="inline font-mono">{c.field1 || "-"}</dd></div>
+                          <div><dt className="text-gray-400 inline">폴링 간격 </dt><dd className="inline">{c.pollIntervalMs}ms</dd></div>
+                        </dl>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -319,13 +422,16 @@ function TargetConfigPanel({ agent, onClose }: { agent: Agent; onClose: () => vo
 }
 
 // ── Agent card ───────────────────────────────────────────
+// [2026-04-24] onCollectorClick(수집기 목록), onDeleteClick(삭제) 추가
 function AgentCard({
-  agent, isSelected, onSelect, onSessionClick,
+  agent, isSelected, onSelect, onSessionClick, onCollectorClick, onDeleteClick,
 }: {
   agent: Agent;
   isSelected: boolean;
   onSelect: (a: Agent) => void;
   onSessionClick: (a: Agent) => void;
+  onCollectorClick: (a: Agent) => void;
+  onDeleteClick: (a: Agent) => void;
 }) {
   return (
     <div
@@ -371,16 +477,39 @@ function AgentCard({
       </dl>
 
       <div className="pt-1 border-t border-gray-100 flex items-center justify-between">
-        <button
-          onClick={(e) => { e.stopPropagation(); onSessionClick(agent); }}
-          className="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1"
-        >
-          <ClockIcon className="h-3.5 w-3.5" />
-          세션 이력
-        </button>
-        <span className="text-xs text-gray-400 flex items-center gap-1">
-          타겟 설정 <ChevronRightIcon className="h-3 w-3" />
-        </span>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={(e) => { e.stopPropagation(); onSessionClick(agent); }}
+            className="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1"
+          >
+            <ClockIcon className="h-3.5 w-3.5" />
+            세션 이력
+          </button>
+          {/* [2026-04-24] 수집기 목록 버튼 */}
+          <button
+            onClick={(e) => { e.stopPropagation(); onCollectorClick(agent); }}
+            className="text-xs text-teal-600 hover:text-teal-800 font-medium flex items-center gap-1"
+          >
+            <CircleStackIcon className="h-3.5 w-3.5" />
+            수집기
+          </button>
+        </div>
+        <div className="flex items-center gap-3">
+          {/* [2026-04-24] 삭제 버튼 — ACTIVE 상태는 비활성화 */}
+          {agent.status !== "ACTIVE" && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onDeleteClick(agent); }}
+              className="text-xs text-red-500 hover:text-red-700 font-medium flex items-center gap-1"
+              title="에이전트 삭제"
+            >
+              <TrashIcon className="h-3.5 w-3.5" />
+              삭제
+            </button>
+          )}
+          <span className="text-xs text-gray-400 flex items-center gap-1">
+            타겟 설정 <ChevronRightIcon className="h-3 w-3" />
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -391,6 +520,9 @@ export default function AgentsPage() {
   const queryClient = useQueryClient();
   const [sessionAgent, setSessionAgent] = useState<Agent | null>(null);
   const [configAgent, setConfigAgent] = useState<Agent | null>(null);
+  // [2026-04-24] 수집기 목록 모달 / 삭제 확인 대화상자 상태
+  const [collectorAgent, setCollectorAgent] = useState<Agent | null>(null);
+  const [deleteTargetAgent, setDeleteTargetAgent] = useState<Agent | null>(null);
   const [statusFilter, setStatusFilter] = useState<AgentStatus | "ALL">("ALL");
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -403,6 +535,25 @@ export default function AgentsPage() {
     queryClient.invalidateQueries({ queryKey: ["agents"] });
     toast.success("새로고침 완료");
   };
+
+  // [2026-04-24] 에이전트 삭제 mutation
+  const deleteMutation = useMutation({
+    mutationFn: (agentId: string) => deleteAgent(agentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agents"] });
+      toast.success("에이전트가 삭제되었습니다.");
+      setDeleteTargetAgent(null);
+    },
+    onError: (err: any) => {
+      const status = err?.response?.status;
+      if (status === 409) {
+        toast.error("연결 중인 에이전트는 삭제할 수 없습니다.");
+      } else {
+        toast.error("에이전트 삭제에 실패했습니다.");
+      }
+      setDeleteTargetAgent(null);
+    },
+  });
 
   const filtered = agents.filter((a: Agent) => {
     const matchStatus = statusFilter === "ALL" || a.status === statusFilter;
@@ -507,6 +658,8 @@ export default function AgentsPage() {
               isSelected={configAgent?.agentId === agent.agentId}
               onSelect={setConfigAgent}
               onSessionClick={setSessionAgent}
+              onCollectorClick={setCollectorAgent}
+              onDeleteClick={setDeleteTargetAgent}
             />
           ))}
         </div>
@@ -516,8 +669,49 @@ export default function AgentsPage() {
       {sessionAgent && (
         <SessionModal agent={sessionAgent} onClose={() => setSessionAgent(null)} />
       )}
+      {/* [2026-04-24] 수집기 목록 모달 */}
+      {collectorAgent && (
+        <CollectorListModal agent={collectorAgent} onClose={() => setCollectorAgent(null)} />
+      )}
       {configAgent && (
         <TargetConfigPanel agent={configAgent} onClose={() => setConfigAgent(null)} />
+      )}
+      {/* [2026-04-24] 에이전트 삭제 확인 다이얼로그 */}
+      {deleteTargetAgent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center shrink-0">
+                <TrashIcon className="h-5 w-5 text-red-600" />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">에이전트 삭제</h2>
+                <p className="text-xs text-gray-500 mt-0.5">이 작업은 되돌릴 수 없습니다.</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-700">
+              <span className="font-semibold">{deleteTargetAgent.displayName || deleteTargetAgent.agentId}</span> 에이전트를 삭제하시겠습니까?
+            </p>
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              삭제 후 동일 에이전트가 재기동되면 핸드셰이크를 통해 자동으로 재등록됩니다.
+            </p>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={() => setDeleteTargetAgent(null)}
+                className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => deleteMutation.mutate(deleteTargetAgent.agentId)}
+                disabled={deleteMutation.isPending}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleteMutation.isPending ? "삭제 중…" : "삭제"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

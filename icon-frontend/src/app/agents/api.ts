@@ -63,6 +63,11 @@ export const updateAgent = async (
   return res.data;
 };
 
+// [2026-04-24] 에이전트 삭제 — DISCONNECTED / INACTIVE / PENDING_CONFIG 상태만 허용
+export const deleteAgent = async (agentId: string): Promise<void> => {
+  await api.delete(`/api/rpc/agents/${agentId}`);
+};
+
 // ── Target Config ──────────────────────────────────────────
 export interface AgentTargetConfig {
   targetConfigId: string;

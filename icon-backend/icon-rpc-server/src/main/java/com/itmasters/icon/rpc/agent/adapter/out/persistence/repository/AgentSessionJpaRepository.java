@@ -30,4 +30,7 @@ public interface AgentSessionJpaRepository extends JpaRepository<AgentSessionEnt
     @Modifying
     @Query("UPDATE AgentSessionEntity s SET s.status = 'DISCONNECTED', s.disconnectedAt = CURRENT_TIMESTAMP, s.disconnectReason = :reason WHERE s.status = 'CONNECTED'")
     int disconnectAllSessions(@Param("reason") String reason);
+
+    // [2026-04-24] 에이전트 삭제 시 해당 에이전트의 모든 세션 삭제
+    void deleteByAgentId(String agentId);
 }
