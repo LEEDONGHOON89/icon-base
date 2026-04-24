@@ -266,6 +266,11 @@ export default function ScenarioForm({
       return;
     }
 
+    // [2026-04-24] dedupMinutes null/undefined → 0 정규화 (DB NOT NULL 준수)
+    if (data.dedupMinutes == null || isNaN(data.dedupMinutes as number)) {
+      data.dedupMinutes = 0;
+    }
+
     setIsSubmitting(true);
     console.log("📤 Submitting data:", data);
     console.log("📤 entityFilterJson:", data.entityFilterJson);
@@ -306,8 +311,8 @@ export default function ScenarioForm({
         detectionAreaId: detectionAreaId || undefined,
         primaryEntityType: primaryEntityType || undefined,
         isActive,
-        // 엔진 설정 필드 (NaN 처리)
-        dedupMinutes: dedupMinutes && !isNaN(dedupMinutes) ? dedupMinutes : undefined,
+        // [2026-04-24] 0도 유효값 — falsy 체크 제거, null/NaN이면 0으로 대체 (DB NOT NULL 준수)
+        dedupMinutes: (dedupMinutes != null && !isNaN(dedupMinutes)) ? dedupMinutes : 0,
       });
       toast.success("기본정보가 저장되었습니다.");
     } catch (error) {
