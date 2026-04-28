@@ -65,6 +65,8 @@ export default function ScenarioForm({
   const [isSavingRules, setIsSavingRules] = useState(false);
   const [ruleFilter, setRuleFilter] = useState("");
   const [entityFilters, setEntityFilters] = useState<EntityFilterCondition[]>([]);
+  // [2026-04-24] 시나리오 재조회(staleTime=0) 시 폼 초기화 방지 — 마지막으로 초기화한 scenarioId 추적
+  const [lastInitializedScenarioId, setLastInitializedScenarioId] = useState<string | null>(null);
 
   // [2026-04-24] /api/v1/rules/active 에서 활성화된 룰 목록 조회
   const { data: availableAggregates = [], isLoading: aggregatesLoading } = useQuery({
@@ -143,8 +145,12 @@ export default function ScenarioForm({
 
   // 시나리오 데이터 로드 시 폼 초기화 (수정 모드)
   // [2026-04-24] isMetadataLoaded = isSuccess 기준으로 변경 — 빈 배열이어도 쿼리 완료 시 reset 실행
+  // [2026-04-24] lastInitializedScenarioId 추가 — 동일 시나리오 재조회(staleTime=0) 시 폼/entityFilters 초기화 방지
+  //              staleTime=0 이면 윈도우 포커스 복귀마다 scenario 객체 참조가 바뀌어 useEffect가 재실행되므로
+  //              scenarioId가 바뀔 때만 초기화하도록 guard 추가
   useEffect(() => {
-    if (scenario && isMetadataLoaded) {
+    if (scenario && isMetadataLoaded && scenario.scenarioId !== lastInitializedScenarioId) {
+      setLastInitializedScenarioId(scenario.scenarioId);
       console.log("🔍 [ScenarioForm] Initializing form with scenario (metadata loaded):", {
         scenarioId: scenario.scenarioId,
         riskLevelId: scenario.riskLevelId,
@@ -195,8 +201,8 @@ export default function ScenarioForm({
         setEntityFilters([]);
       }
     }
-  // [2026-04-24] 의존배열에서 length 항목 제거 — isMetadataLoaded(isSuccess) 만으로 충분
-  }, [scenario, reset, isMetadataLoaded]);
+  // [2026-04-24] 의존배열: lastInitializedScenarioId 추가 (동일 scenarioId 재초기화 방지)
+  }, [scenario, reset, isMetadataLoaded, lastInitializedScenarioId]);
 
   // entityFilters 변경 시 JSON으로 변환하여 폼에 반영
   useEffect(() => {

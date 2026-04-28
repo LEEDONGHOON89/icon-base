@@ -79,7 +79,9 @@ public class ProfileEntity extends Auditable {
     /**
      * 데이터 목적지 타입
      * EVENT_STREAM: event_stream만 저장
-     * ENTITY_ATTRIBUTES: event_stream + entity_attributes 양쪽 저장
+     * ENTITY: entity_attributes만 저장
+     * BOTH: event_stream + entity_attributes 양쪽 저장
+     * [2026-04-24] 주석 수정: ENTITY_ATTRIBUTES 는 존재하지 않는 enum 값, BOTH 가 올바른 값
      */
     @Enumerated(EnumType.STRING)
     @Column(name = "destination_type", length = 20)
@@ -87,7 +89,8 @@ public class ProfileEntity extends Auditable {
 
     /**
      * 엔티티 타입 (CUSTOMER, ACCOUNT, DEVICE)
-     * destination_type이 ENTITY_ATTRIBUTES일 때 필수
+     * destination_type이 ENTITY 또는 BOTH일 때 필수
+     * [2026-04-24] 주석 수정: ENTITY_ATTRIBUTES → ENTITY 또는 BOTH
      */
     @Enumerated(EnumType.STRING)
     @Column(name = "entity_type", length = 20)

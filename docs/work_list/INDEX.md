@@ -25,6 +25,8 @@
 | 2026-04-22 | [2026-04-22_백엔드직접수집maxLinesPerPoll_maxRecordBytes적용.md](2026-04-22_백엔드직접수집maxLinesPerPoll_maxRecordBytes적용.md) | 백엔드 직접 수집 시 maxLinesPerPoll/maxRecordBytes 미적용 버그 수정 — 엔진 엔티티 필드 추가, FileSystemRealtimeService/DatabaseService 제한 로직 적용 |
 | 2026-04-22 | [2026-04-22_미사용에이전트수집기테이블삭제.md](2026-04-22_미사용에이전트수집기테이블삭제.md) | agent_collector_configs/file/jdbc 테이블 및 관련 Java 클래스·프론트엔드 함수 전체 삭제 (AgentSnapshotService로 대체됨) |
 | 2026-04-22 | [2026-04-22_TODO001_002_수집원본_매핑결과_조회화면추가.md](2026-04-22_TODO001_002_수집원본_매핑결과_조회화면추가.md) | TODO-001 수집원본/TODO-002 매핑결과 조회 화면 추가, 파서 프론트엔드 재설계 완성, DB 인덱스 추가 |
+| 2026-04-24 | [2026-04-24_탭기능및엔티티필드관리및버그수정.md](2026-04-24_탭기능및엔티티필드관리및버그수정.md) | 헤더 탭 기능 구현, 엔티티 필드 CRUD (V1_0_14), DestinationType 오류 수정 (V1_0_15), 시나리오 폼 버그 2건, 데이터소스 새 창→페이지 전환, 상세 페이지 탭 제외 처리 |
+| 2026-04-24 | [2026-04-24_탭Keep-alive및시나리오수정버튼수정.md](2026-04-24_탭Keep-alive및시나리오수정버튼수정.md) | 탭 Keep-alive 구현 (CSS display:none 페이지 캐시), 시나리오 수정 버튼 새 창→페이지 전환 |
 
 ---
 

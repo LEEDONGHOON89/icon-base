@@ -261,17 +261,21 @@ export default function ProfileDetailPanel({
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   저장 방식
                 </label>
+                {/* [2026-04-24] ENTITY_ATTRIBUTES → BOTH/ENTITY 로 수정 (실제 enum 값 반영) */}
                 <select
                   value={destinationType}
                   onChange={(e) => setDestinationType(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 >
                   <option value="EVENT_STREAM">이벤트 스트림만 저장</option>
-                  <option value="ENTITY_ATTRIBUTES">이벤트 스트림 + 엔티티 속성 저장</option>
+                  <option value="ENTITY">엔티티 속성만 저장</option>
+                  <option value="BOTH">이벤트 스트림 + 엔티티 속성 저장</option>
                 </select>
                 <p className="mt-1 text-xs text-gray-500">
                   {destinationType === "EVENT_STREAM"
                     ? "시계열 이벤트 데이터만 event_stream 테이블에 저장됩니다."
+                    : destinationType === "ENTITY"
+                    ? "entity_attributes 테이블에만 저장됩니다 (UPSERT)."
                     : "event_stream과 entity_attributes 양쪽에 저장됩니다 (UPSERT)."}
                 </p>
               </div>
@@ -300,8 +304,9 @@ export default function ProfileDetailPanel({
                 </div>
               )}
 
-              {/* Entity Type (ENTITY_ATTRIBUTES 선택 시만 표시) */}
-              {destinationType === "ENTITY_ATTRIBUTES" && (
+              {/* Entity Type (ENTITY 또는 BOTH 선택 시 표시) */}
+              {/* [2026-04-24] ENTITY_ATTRIBUTES → ENTITY || BOTH 로 수정 */}
+              {(destinationType === "ENTITY" || destinationType === "BOTH") && (
                 <>
                   {/* 엔티티 타입과 Entity ID 필드를 1줄로 배치 */}
                   <div className="grid grid-cols-2 gap-4">

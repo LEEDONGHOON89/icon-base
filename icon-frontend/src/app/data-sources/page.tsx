@@ -265,7 +265,8 @@ export default function DataSourcesPage() {
                     <div
                       key={dataSource.dataSourceId}
                       className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-all duration-200 flex flex-col cursor-pointer"
-                      onClick={() => window.open(`/data-sources/${dataSource.dataSourceId}`, '_blank')}
+                      // [2026-04-24] window.open(_blank) → router.push 로 변경 — 새 창 대신 현재 탭 내 페이지 전환
+                      onClick={() => router.push(`/data-sources/${dataSource.dataSourceId}`)}
                     >
                       {/* 헤더 영역 */}
                       <div className="flex items-start justify-between mb-4">

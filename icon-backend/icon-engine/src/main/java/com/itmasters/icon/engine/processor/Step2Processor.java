@@ -278,7 +278,8 @@ public class Step2Processor {
 
     /**
      * Profile 설정에 따라 entity_attributes 저장
-     * - Profile의 destination_type이 ENTITY_ATTRIBUTES인 경우에만 저장
+     * - Profile의 destination_type이 ENTITY 또는 BOTH인 경우에만 저장
+     * [2026-04-24] 주석 수정: ENTITY_ATTRIBUTES → ENTITY 또는 BOTH
      * - Profile의 entity_type, entity_id_field, store_fields 설정 사용
      * 
      * @param mappedDataRows 저장할 데이터

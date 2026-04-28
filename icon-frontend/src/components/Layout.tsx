@@ -337,25 +337,47 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   }, []);
 
   // [2026-04-24] pathname 변경 시 탭 자동 추가 (중복 방지)
+  // [2026-04-24] 서브 페이지(상세/수정/신규 등) 탭 제외 처리:
+  //   - pathname === matched.href  → 메뉴 직접 경로: 탭 추가
+  //   - pathname.startsWith(matched.href + "/") → 하위 상세/수정 경로:
+  //       탭 추가 없이 부모 메뉴 탭을 active 로 유지
+  //       (없으면 부모 탭 생성 후 active 설정)
   React.useEffect(() => {
     if (!pathname || pathname === "/login") return;
 
-    // 현재 경로에 해당하는 메뉴 항목 조회
+    // 현재 경로에 해당하는 메뉴 항목 조회 (정확 일치 우선)
     const matched = flattenedMenuItems.find(
       (item) =>
         pathname === item.href ||
         (item.href !== "/" && pathname.startsWith(item.href + "/"))
     );
 
-    const label = matched?.name ?? pathname;
-    const parentLabel = matched?.parentName;
+    const isSubPage = matched != null && pathname !== matched.href;
 
-    setActiveTabPath(pathname);
-    setTabs((prev) => {
-      // 이미 같은 경로의 탭이 있으면 추가하지 않음
-      if (prev.some((t) => t.path === pathname)) return prev;
-      return [...prev, { path: pathname, label, parentLabel }];
-    });
+    if (isSubPage) {
+      // 상세/수정 등 하위 경로: 새 탭 추가하지 않고 부모 메뉴 탭을 active 로 설정
+      const parentPath = matched.href;
+      setActiveTabPath(parentPath);
+      // 부모 탭이 아직 없으면 생성 (직접 URL 진입 시 대비)
+      setTabs((prev) => {
+        if (prev.some((t) => t.path === parentPath)) return prev;
+        return [...prev, {
+          path: parentPath,
+          label: matched.name,
+          parentLabel: matched.parentName,
+        }];
+      });
+    } else {
+      // 메뉴 직접 경로: 탭 추가 (중복 방지)
+      const label = matched?.name ?? pathname;
+      const parentLabel = matched?.parentName;
+
+      setActiveTabPath(pathname);
+      setTabs((prev) => {
+        if (prev.some((t) => t.path === pathname)) return prev;
+        return [...prev, { path: pathname, label, parentLabel }];
+      });
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 

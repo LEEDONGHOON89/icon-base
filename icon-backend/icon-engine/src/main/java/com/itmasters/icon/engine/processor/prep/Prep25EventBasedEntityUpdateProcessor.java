@@ -67,8 +67,9 @@ public class Prep25EventBasedEntityUpdateProcessor {
         List<EngineEventStreamEntity> events = eventStreamRepository.findByExecDsMpId(execDsMpId);
 
         if (events == null || events.isEmpty()) {
-            // [2026-04-23] WARN → DEBUG 변경: event_stream 대상이 아닌 프로파일(ENTITY_ATTRIBUTES only 등)은
+            // [2026-04-23] WARN → DEBUG 변경: event_stream 대상이 아닌 프로파일(ENTITY only 등)은
             //              정상적으로 event_stream이 없을 수 있으므로 WARN은 로그 오염 유발
+            // [2026-04-24] 주석 수정: ENTITY_ATTRIBUTES only → ENTITY only
             log.debug("해당 exec에 대한 event_stream이 없음 (정상) - execDsMpId: {}", execDsMpId);
             log.info("========== PREP-2.5 완료 (이벤트 기반 엔티티 업데이트) - 업데이트 없음 ==========");
             return 0;

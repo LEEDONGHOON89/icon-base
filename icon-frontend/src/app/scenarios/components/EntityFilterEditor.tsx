@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchEntityFields, type EntityField } from "@/app/entity-fields/api";
 import { PlusIcon, TrashIcon, CheckCircleIcon } from "@heroicons/react/24/outline";
@@ -27,11 +27,17 @@ interface EntityFilterEditorProps {
   onChange: (filters: EntityFilterCondition[]) => void;
 }
 
+// [2026-04-24] 순환 상태 업데이트 구조 개선:
+//   - isMountRef: 마운트 직후 onChange 호출 방지 (불필요한 부모 리렌더 억제)
+//   - value sync effect: 부모가 시나리오 로드 후 entityFilters 를 변경할 때만 동기화
+//     (사용자 편집 중에는 부모가 value 를 동일 참조로 내려주므로 동기화가 일어나지 않음)
 export default function EntityFilterEditor({ value, onChange }: EntityFilterEditorProps) {
   const [entityFilters, setEntityFilters] = useState<EntityFilterCondition[]>(value || []);
   const [validationResult, setValidationResult] = useState<{ valid: boolean; message: string } | null>(null);
+  // [2026-04-24] 마운트 직후 onChange 스킵 — 초기값을 부모에 역전파하면 불필요한 리렌더 발생
+  const isMountedRef = useRef(false);
 
-  // value prop이 변경될 때 내부 state 동기화
+  // value prop이 변경될 때 내부 state 동기화 (부모의 초기화/외부 변경 반영)
   useEffect(() => {
     setEntityFilters(value || []);
   }, [value]);
@@ -42,8 +48,12 @@ export default function EntityFilterEditor({ value, onChange }: EntityFilterEdit
     queryFn: fetchEntityFields,
   });
 
-  // 부모 컴포넌트에 변경사항 전달
+  // 부모 컴포넌트에 변경사항 전달 (마운트 직후 첫 실행은 건너뜀)
   useEffect(() => {
+    if (!isMountedRef.current) {
+      isMountedRef.current = true;
+      return;
+    }
     onChange(entityFilters);
   }, [entityFilters, onChange]);
 

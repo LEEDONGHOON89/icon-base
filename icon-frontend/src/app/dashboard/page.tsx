@@ -13,10 +13,13 @@ import {
   ArrowTrendingUpIcon,
 } from "@heroicons/react/24/outline";
 import { useEffect, useState, useRef } from "react";
+// [2026-04-24] window.open(_blank) → router.push 로 변경
+import { useRouter } from "next/navigation";
 import { dashboardApi, DashboardStats, HourlyStats } from "./api";
 import HourlyChart from "./HourlyChart";
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [hourlyStats, setHourlyStats] = useState<HourlyStats[]>([]);
   const [loading, setLoading] = useState(true);
@@ -236,7 +239,8 @@ setDashboardStats(statsData);
           {riskLevelStats.map((stat) => (
             <div
               key={stat.name}
-              onClick={stat.actionStats ? () => window.open(`/detections/actions?riskLevel=${stat.riskLevel}`, '_blank') : undefined}
+              // [2026-04-24] window.open(_blank) → router.push 로 변경 — 새 창 대신 현재 탭 내 페이지 전환
+              onClick={stat.actionStats ? () => router.push(`/detections/actions?riskLevel=${stat.riskLevel}`) : undefined}
               className={`${stat.bgColor} ${stat.borderColor} border rounded-xl p-5 transition-all duration-200 ${
                 stat.actionStats
                   ? 'hover:shadow-md cursor-pointer'
