@@ -133,8 +133,10 @@ public class DataPipeline {
                     .toList();
 
             SchemaValidationResult validation = schemaValidator.validate(dataSourceId, rawData);
+            // [2026-04-28] 검증 실패 시 무시하고 진행하던 버그 수정 - processDataSource()와 동일하게 failed() 반환
             if (!validation.isValid()) {
                 log.warn("[Inline] 스키마 검증 실패: {}", validation.getMessage());
+                return DataProcessingResultDto.failed(validation.getMessage());
             }
 
             List<Map<String, Object>> mappedData = fieldMappingEngine.mapByDataSource(rawData, dataSourceId);
