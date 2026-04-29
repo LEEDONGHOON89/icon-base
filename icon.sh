@@ -240,8 +240,11 @@ setup_database() {
         DB_IS_NEW=false
     fi
 
-    # postgres 사용자 비밀번호 설정
-    sudo -u postgres psql -c "ALTER USER $DB_USER PASSWORD '$DB_PASS';" &>/dev/null || true
+    # [2026-04-29] postgres 사용자 비밀번호 설정 — 신규 DB 생성 시에만 적용
+    #   기존 서버에서 start 실행 시 기존 패스워드를 덮어쓰는 문제 방지
+    if [ "$DB_IS_NEW" = true ]; then
+        sudo -u postgres psql -c "ALTER USER $DB_USER PASSWORD '$DB_PASS';" &>/dev/null || true
+    fi
 
     # pg_hba.conf md5 인증 확인 (password 접속 가능하도록)
     PG_HBA=$(sudo -u postgres psql -tAc "SHOW hba_file;" 2>/dev/null || true)
