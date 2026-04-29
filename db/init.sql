@@ -1436,6 +1436,8 @@ CREATE TABLE IF NOT EXISTS public.ds_file_system_config (
     ds_file_system_config_id character varying(50) NOT NULL,
     data_source_id character varying(13) NOT NULL,
     connection_name character varying(100) NOT NULL,
+    -- [2026-04-29] agent_id 추가 — NULL이면 엔진 직접 폴링, 설정 시 에이전트 Push 모드
+    agent_id character varying(100) NULL,
     watch_directory character varying(500) NOT NULL,
     file_pattern character varying(100) DEFAULT '*'::character varying,
     file_encoding character varying(20) DEFAULT 'UTF-8'::character varying,
