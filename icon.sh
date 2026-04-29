@@ -579,13 +579,29 @@ build_frontend() {
     info "프론트엔드 빌드 완료"
 }
 
+# [2026-04-29] 포트 감지: ss → netstat → lsof 순서로 폴백 (서버 환경 호환성)
+fe_port_open() {
+    ss      -tlnp 2>/dev/null | grep -q ":5160" && return 0
+    netstat -tlnp 2>/dev/null | grep -q ":5160" && return 0
+    lsof -i :5160 -sTCP:LISTEN 2>/dev/null | grep -q "."  && return 0
+    return 1
+}
+
 fe_is_running() {
-    # [2026-04-17] Next.js standalone은 프로세스명을 'next-server'로 변경 → 포트로 체크
-    ss -tlnp 2>/dev/null | grep -q ":5160"
+    fe_port_open
 }
 
 fe_get_pid() {
-    ss -tlnp 2>/dev/null | grep ":5160" | grep -oP 'pid=\K[0-9]+' | head -1 || true
+    # ss 방식
+    local pid
+    pid=$(ss -tlnp 2>/dev/null | grep ":5160" | grep -oP 'pid=\K[0-9]+' | head -1)
+    [ -n "$pid" ] && echo "$pid" && return
+    # netstat 방식
+    pid=$(netstat -tlnp 2>/dev/null | grep ":5160" | awk '{print $7}' | cut -d/ -f1 | head -1)
+    [ -n "$pid" ] && echo "$pid" && return
+    # lsof 방식
+    pid=$(lsof -i :5160 -sTCP:LISTEN 2>/dev/null | awk 'NR>1{print $2}' | head -1)
+    echo "${pid:-}"
 }
 
 start_frontend() {
@@ -604,13 +620,19 @@ start_frontend() {
     cd "$FRONTEND_STANDALONE_DIR"
     PORT=5160 HOSTNAME=0.0.0.0 nohup node server.js > "$LOG_DIR/icon-frontend.log" 2>&1 &
     cd "$BASE_DIR"
-    sleep 4
 
-    if fe_is_running; then
-        info "프론트엔드 기동 성공 (PID: $(fe_get_pid)) → 포트 5160"
-    else
-        error "프론트엔드 기동 실패. 로그 확인: $LOG_DIR/icon-frontend.log"; exit 1
-    fi
+    # [2026-04-29] 단일 sleep 대신 재시도 루프 (최대 15초 대기)
+    local i=0
+    while [ $i -lt 15 ]; do
+        sleep 1
+        if fe_is_running; then
+            info "프론트엔드 기동 성공 (PID: $(fe_get_pid)) → 포트 5160"
+            return
+        fi
+        ((i++)) || true
+    done
+
+    error "프론트엔드 기동 실패. 로그 확인: $LOG_DIR/icon-frontend.log"; exit 1
 }
 
 stop_frontend() {
