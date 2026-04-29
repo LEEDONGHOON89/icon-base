@@ -74,6 +74,13 @@ install_pkg() {
 
 check_java() {
     section "Java 17 확인"
+
+    # [2026-04-29] JAVA_HOME이 설정됐지만 실제 바이너리가 없으면 무시 (잘못된 경로 방지)
+    if [ -n "${JAVA_HOME:-}" ] && [ ! -x "$JAVA_HOME/bin/java" ]; then
+        warn "JAVA_HOME($JAVA_HOME) 에 java 바이너리 없음 → JAVA_HOME 무시하고 재탐색"
+        unset JAVA_HOME
+    fi
+
     # JAVA_HOME 또는 PATH에서 java 탐색
     if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ]; then
         JAVA_BIN="$JAVA_HOME/bin/java"
@@ -88,7 +95,7 @@ check_java() {
         if [ "$JAVA_VER" -ge 17 ] 2>/dev/null; then
             info "Java $JAVA_VER 확인됨: $JAVA_BIN"; return
         else
-            warn "Java $JAVA_VER 감지 (17 이상 필요)"
+            warn "Java $JAVA_VER 감지 (17 이상 필요) → Java 17 설치를 진행합니다"
         fi
     fi
 
@@ -98,13 +105,28 @@ check_java() {
     if [ "$os" = "debian" ]; then
         sudo apt-get update -qq
         sudo apt-get install -y openjdk-17-jdk
+        # [2026-04-29] 설치 후 Java 17 바이너리 명시적 탐색 (command -v 는 옛 버전 반환 가능)
+        JAVA_BIN=$(find /usr/lib/jvm -name "java" -path "*java-17*" 2>/dev/null | head -1)
+        [ -z "$JAVA_BIN" ] && JAVA_BIN=$(command -v java)
     elif [ "$os" = "redhat" ]; then
         sudo yum install -y java-17-openjdk-devel
+        # [2026-04-29] 설치 후 Java 17 바이너리 명시적 탐색
+        JAVA_BIN=$(find /usr/lib/jvm -name "java" -path "*java-17*" 2>/dev/null | head -1)
+        if [ -z "$JAVA_BIN" ]; then
+            JAVA_BIN=$(alternatives --list 2>/dev/null | awk '$1=="java" && /java-17/{print $3}' | head -1)
+        fi
+        [ -z "$JAVA_BIN" ] && JAVA_BIN=$(command -v java)
     else
         error "Java 17을 수동으로 설치 후 JAVA_HOME을 설정하세요."; exit 1
     fi
-    JAVA_BIN=$(command -v java)
-    info "Java 설치 완료: $JAVA_BIN"
+
+    # [2026-04-29] 설치 후 바이너리 존재 및 버전 최종 확인
+    if [ -z "$JAVA_BIN" ] || [ ! -x "$JAVA_BIN" ]; then
+        error "Java 17 설치 후 바이너리를 찾을 수 없습니다. 수동으로 JAVA_HOME을 설정하세요."
+        exit 1
+    fi
+    JAVA_VER=$("$JAVA_BIN" -version 2>&1 | head -1 | sed -E 's/.*version "([0-9]+).*/\1/')
+    info "Java $JAVA_VER 설치 완료: $JAVA_BIN"
 }
 
 check_node() {

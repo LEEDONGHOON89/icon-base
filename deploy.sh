@@ -42,18 +42,18 @@ SERVER_DEPLOY_DIR[vm]="/home/datasay/sw/icon-base"
 SERVER_JAVA_BIN[vm]="/home/datasay/sw/icon/jdk-17.0.17/bin/java"
 
 # 개발서버 4
-SERVER_HOST[dev4]="개발서버4_IP"
-SERVER_PORT[dev4]="22"
-SERVER_USER[dev4]="dev_user"
-SERVER_DEPLOY_DIR[dev4]="/home/datasay/sw/icon"
-SERVER_JAVA_BIN[dev4]="/home/datasay/sw/icon/jdk-17.0.17/bin/java"
+SERVER_HOST[dev1]="112.187.225.245"
+SERVER_PORT[dev1]="60023"
+SERVER_USER[dev1]="dev_user"
+SERVER_DEPLOY_DIR[dev1]="/app/dev/icon-base"
+SERVER_JAVA_BIN[dev1]="/home/datasay/sw/icon/jdk-17.0.17/bin/java"
 
 # 개발서버 6
-SERVER_HOST[dev6]="개발서버6_IP"
-SERVER_PORT[dev6]="22"
-SERVER_USER[dev6]="dev_user"
-SERVER_DEPLOY_DIR[dev6]="/home/datasay/sw/icon"
-SERVER_JAVA_BIN[dev6]="/home/datasay/sw/icon/jdk-17.0.17/bin/java"
+SERVER_HOST[dev2]="개발서버6_IP"
+SERVER_PORT[dev2]="22"
+SERVER_USER[dev2]="dev_user"
+SERVER_DEPLOY_DIR[dev2]="/home/datasay/sw/icon"
+SERVER_JAVA_BIN[dev2]="/home/datasay/sw/icon/jdk-17.0.17/bin/java"
 
 # 개발서버 7
 SERVER_HOST[dev7]="개발서버7_IP"
