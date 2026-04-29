@@ -336,12 +336,25 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     return items;
   }, []);
 
+  // [2026-04-29] 탭으로 유지할 경로 화이트리스트
+  //   여기에 추가된 경로(및 하위 경로)만 탭 바에 표시됨
+  //   나머지 메뉴는 탭 생성 없이 일반 페이지 이동으로 동작
+  const TAB_ENABLED_PATHS = [
+    "/detections/scenarios",  // 시나리오 탐지
+    "/detections/rules",      // 룰 탐지
+    "/detections/actions",    // 탐지 조치
+    "/detections/entity-history", // 엔티티 행적
+  ];
+
+  // 현재 경로가 탭 대상인지 확인 (화이트리스트 경로 또는 그 하위 경로)
+  const isTabEnabledPath = (path: string) =>
+    TAB_ENABLED_PATHS.some(
+      (tp) => path === tp || path.startsWith(tp + "/")
+    );
+
   // [2026-04-24] pathname 변경 시 탭 자동 추가 (중복 방지)
-  // [2026-04-24] 서브 페이지(상세/수정/신규 등) 탭 제외 처리:
-  //   - pathname === matched.href  → 메뉴 직접 경로: 탭 추가
-  //   - pathname.startsWith(matched.href + "/") → 하위 상세/수정 경로:
-  //       탭 추가 없이 부모 메뉴 탭을 active 로 유지
-  //       (없으면 부모 탭 생성 후 active 설정)
+  // [2026-04-24] 서브 페이지(상세/수정/신규 등) 탭 제외 처리
+  // [2026-04-29] TAB_ENABLED_PATHS 화이트리스트: 해당 경로만 탭 생성, 나머지는 일반 이동
   React.useEffect(() => {
     if (!pathname || pathname === "/login") return;
 
@@ -351,6 +364,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         pathname === item.href ||
         (item.href !== "/" && pathname.startsWith(item.href + "/"))
     );
+
+    // 탭 비대상 경로: 탭 생성하지 않고 active 탭도 해제
+    if (!isTabEnabledPath(pathname)) {
+      setActiveTabPath("");
+      return;
+    }
 
     const isSubPage = matched != null && pathname !== matched.href;
 
@@ -368,7 +387,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         }];
       });
     } else {
-      // 메뉴 직접 경로: 탭 추가 (중복 방지)
+      // 탭 대상 메뉴 직접 경로: 탭 추가 (중복 방지)
       const label = matched?.name ?? pathname;
       const parentLabel = matched?.parentName;
 
