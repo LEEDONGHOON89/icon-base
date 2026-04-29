@@ -32,9 +32,6 @@ import {
 } from "@heroicons/react/24/outline";
 import { useState } from "react";
 import { ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
-// [2026-04-24] 탭 기능 구현 - 탭 상태 atom 및 TabBar 컴포넌트 임포트
-import { tabsAtom, activeTabPathAtom } from "@/atoms/tabsAtom";
-import TabBar from "@/components/TabBar";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -46,9 +43,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [auth, setAuth] = useAtom(authAtom);
   const [, setUser] = useAtom(userAtom);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  // [2026-04-24] 탭 상태 관리
-  const [, setTabs] = useAtom(tabsAtom);
-  const [, setActiveTabPath] = useAtom(activeTabPathAtom);
 
   // 메뉴 검색 autocomplete 상태
   const [searchQuery, setSearchQuery] = useState("");
@@ -127,7 +121,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         accessToken: null,
         refreshToken: null,
       });
-      setUser(null); // 사용자 정보도 초기화
+      setUser(null);
       router.push("/login");
     }
   };
@@ -269,7 +263,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       icon: CogIcon,
       color: "from-slate-500 to-slate-600",
       children: [
-        // 데이터 연동
         {
           name: "데이터소스",
           href: "/data-sources",
@@ -286,7 +279,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           href: "/fields/entity",
           icon: TableCellsIcon,
         },
-
         {
           name: "에이전트 관리",
           href: "/agents",
@@ -300,7 +292,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         },
       ],
     },
-
   ];
 
   const toggleMenu = (menuId: string) => {
@@ -317,12 +308,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
     menuItems.forEach((item) => {
       if (item.href) {
-        // 직접 href가 있는 메뉴 (대시보드 등)
         items.push({ name: item.name, href: item.href });
       }
 
       if ('children' in item && item.children) {
-        // 자식 메뉴가 있는 경우
         (item.children as any[]).forEach((child) => {
           items.push({
             name: child.name,
@@ -335,70 +324,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
     return items;
   }, []);
-
-  // [2026-04-29] 탭으로 유지할 경로 화이트리스트
-  //   여기에 추가된 경로(및 하위 경로)만 탭 바에 표시됨
-  //   나머지 메뉴는 탭 생성 없이 일반 페이지 이동으로 동작
-  const TAB_ENABLED_PATHS = [
-    "/detections/scenarios",  // 시나리오 탐지
-    "/detections/rules",      // 룰 탐지
-    "/detections/actions",    // 탐지 조치
-    "/detections/entity-history", // 엔티티 행적
-  ];
-
-  // 현재 경로가 탭 대상인지 확인 (화이트리스트 경로 또는 그 하위 경로)
-  const isTabEnabledPath = (path: string) =>
-    TAB_ENABLED_PATHS.some(
-      (tp) => path === tp || path.startsWith(tp + "/")
-    );
-
-  // [2026-04-24] pathname 변경 시 탭 자동 추가 (중복 방지)
-  // [2026-04-24] 서브 페이지(상세/수정/신규 등) 탭 제외 처리
-  // [2026-04-29] TAB_ENABLED_PATHS 화이트리스트: 해당 경로만 탭 생성, 나머지는 일반 이동
-  React.useEffect(() => {
-    if (!pathname || pathname === "/login") return;
-
-    // 현재 경로에 해당하는 메뉴 항목 조회 (정확 일치 우선)
-    const matched = flattenedMenuItems.find(
-      (item) =>
-        pathname === item.href ||
-        (item.href !== "/" && pathname.startsWith(item.href + "/"))
-    );
-
-    // 탭 비대상 경로: 탭 생성하지 않고 active 탭도 해제
-    if (!isTabEnabledPath(pathname)) {
-      setActiveTabPath("");
-      return;
-    }
-
-    const isSubPage = matched != null && pathname !== matched.href;
-
-    if (isSubPage) {
-      // 상세/수정 등 하위 경로: 새 탭 추가하지 않고 부모 메뉴 탭을 active 로 설정
-      const parentPath = matched.href;
-      setActiveTabPath(parentPath);
-      // 부모 탭이 아직 없으면 생성 (직접 URL 진입 시 대비)
-      setTabs((prev) => {
-        if (prev.some((t) => t.path === parentPath)) return prev;
-        return [...prev, {
-          path: parentPath,
-          label: matched.name,
-          parentLabel: matched.parentName,
-        }];
-      });
-    } else {
-      // 탭 대상 메뉴 직접 경로: 탭 추가 (중복 방지)
-      const label = matched?.name ?? pathname;
-      const parentLabel = matched?.parentName;
-
-      setActiveTabPath(pathname);
-      setTabs((prev) => {
-        if (prev.some((t) => t.path === pathname)) return prev;
-        return [...prev, { path: pathname, label, parentLabel }];
-      });
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname]);
 
   // 검색 필터링
   const filteredMenuItems = React.useMemo(() => {
@@ -496,7 +421,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </div>
       )}
 
-      {/* Sidebar backdrop - transparent, only for closing */}
+      {/* Sidebar backdrop */}
       {isSidebarOpen && (
         <div
           className="lg:hidden fixed inset-0 z-30"
@@ -508,8 +433,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       <aside
         className={`
         fixed inset-y-0 left-0 z-40 w-72 bg-white shadow-xl transition-transform duration-300 ease-in-out h-screen overflow-y-auto
-        ${isSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-          }
+        ${isSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
       `}
       >
         <div className="flex flex-col h-full">
@@ -547,9 +471,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                       className={`
                         w-full group flex items-center px-4 py-3 rounded-xl transition-all duration-200 relative overflow-hidden
                         ${hasActiveChild
-                          ? "bg-gradient-to-r " +
-                          item.color +
-                          " text-white shadow-lg"
+                          ? "bg-gradient-to-r " + item.color + " text-white shadow-lg"
                           : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                         }
                       `}
@@ -557,10 +479,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                       <Icon
                         className={`
                         h-6 w-6 transition-transform duration-200
-                        ${hasActiveChild
-                            ? "text-white"
-                            : "text-gray-500 group-hover:text-gray-700"
-                          }
+                        ${hasActiveChild ? "text-white" : "text-gray-500 group-hover:text-gray-700"}
                       `}
                       />
                       <span className="ml-3 font-medium flex-1 text-left">
@@ -596,10 +515,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                               <ChildIcon
                                 className={`
                                 h-5 w-5 transition-transform duration-200
-                                ${isActive
-                                    ? "text-gray-700"
-                                    : "text-gray-400 group-hover:text-gray-600"
-                                  }
+                                ${isActive ? "text-gray-700" : "text-gray-400 group-hover:text-gray-600"}
                               `}
                               />
                               <span className="ml-3 text-sm font-medium">
@@ -614,7 +530,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 );
               }
 
-              // Regular menu item (items without children must have href)
+              // Regular menu item
               if (!item.href) return null;
 
               const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
@@ -626,9 +542,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   className={`
                     group flex items-center px-4 py-3 rounded-xl transition-all duration-200 relative overflow-hidden
                     ${isActive
-                      ? "bg-gradient-to-r " +
-                      item.color +
-                      " text-white shadow-lg transform scale-105"
+                      ? "bg-gradient-to-r " + item.color + " text-white shadow-lg transform scale-105"
                       : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                     }
                   `}
@@ -637,10 +551,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   <Icon
                     className={`
                     h-6 w-6 transition-transform duration-200
-                    ${isActive
-                        ? "text-white"
-                        : "text-gray-500 group-hover:text-gray-700"
-                      }
+                    ${isActive ? "text-white" : "text-gray-500 group-hover:text-gray-700"}
                     ${isActive ? "scale-110" : "group-hover:scale-110"}
                   `}
                   />
@@ -680,9 +591,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0 lg:ml-72">
         {/* Header */}
-        {/* [2026-04-24] 탭 바 포함 — 헤더 높이가 h-16 + TabBar(h-9) 로 확장됨 */}
+        {/* [2026-04-29] 탭 기능 제거 — TabBar 삭제, 헤더 단순화 */}
         <header className="bg-white shadow-sm border-b border-gray-200 lg:pl-0 pl-16 sticky top-0 z-20">
-          <div className="flex items-center justify-between h-16 px-6 border-b border-gray-100">
+          <div className="flex items-center justify-between h-16 px-6">
             {/* 검색 입력 */}
             <div className="flex-1 max-w-md relative">
               <div className="relative">
@@ -753,12 +664,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               </div>
             </div>
           </div>
-          {/* [2026-04-24] 탭 바 */}
-          <TabBar />
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-auto p-4 bg-gradient-to-br ">
+        <main className="flex-1 overflow-auto p-4 bg-gradient-to-br">
           {children}
         </main>
       </div>
