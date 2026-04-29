@@ -13,7 +13,10 @@ import java.util.List;
  * 엔티티 행적 조회 Repository
  *
  * entity_id가 group_key에 포함된 탐지 이력 및 이벤트를 조회합니다.
- * PostgreSQL의 array_position() 함수를 활용합니다.
+ * [2026-04-29] array_position(text[], ?) 타입 불일치 수정:
+ *   PostgreSQL 18에서 JDBC 파라미터가 character varying으로 전달되어
+ *   array_position(text[], character varying) 오버로드를 찾지 못하는 문제 발생.
+ *   → CAST(:entityId AS text) = ANY(string_to_array(...)) 방식으로 전환.
  */
 @Repository
 public class EntityHistoryRepository {
@@ -26,9 +29,10 @@ public class EntityHistoryRepository {
      */
     @SuppressWarnings("unchecked")
     public List<ApiDetectScenarioEntity> findScenariosByEntityId(String entityId, int limit) {
+        // [2026-04-29] array_position → CAST(:entityId AS text) = ANY() 로 변경 (타입 불일치 수정)
         String sql = """
             SELECT ds.* FROM detect_scenarios ds
-            WHERE array_position(string_to_array(ds.group_key, '|'), :entityId) IS NOT NULL
+            WHERE CAST(:entityId AS text) = ANY(string_to_array(ds.group_key, '|'))
             ORDER BY ds.detected_dt DESC
             LIMIT :limit
             """;
@@ -45,9 +49,10 @@ public class EntityHistoryRepository {
      */
     @SuppressWarnings("unchecked")
     public List<ApiDetectRuleEntity> findAggregatesByEntityId(String entityId, int limit) {
+        // [2026-04-29] array_position → CAST(:entityId AS text) = ANY() 로 변경 (타입 불일치 수정)
         String sql = """
             SELECT dr.* FROM detect_rules dr
-            WHERE array_position(string_to_array(dr.group_key, '|'), :entityId) IS NOT NULL
+            WHERE CAST(:entityId AS text) = ANY(string_to_array(dr.group_key, '|'))
             ORDER BY dr.detected_dt DESC
             LIMIT :limit
             """;
@@ -63,9 +68,10 @@ public class EntityHistoryRepository {
      */
     @SuppressWarnings("unchecked")
     public List<ApiDetectRuleEntity> findRulesByEntityId(String entityId, int limit) {
+        // [2026-04-29] array_position → CAST(:entityId AS text) = ANY() 로 변경 (타입 불일치 수정)
         String sql = """
             SELECT dr.* FROM detect_rules dr
-            WHERE array_position(string_to_array(dr.group_key, '|'), :entityId) IS NOT NULL
+            WHERE CAST(:entityId AS text) = ANY(string_to_array(dr.group_key, '|'))
             ORDER BY dr.detected_dt DESC
             LIMIT :limit
             """;
@@ -82,10 +88,11 @@ public class EntityHistoryRepository {
      */
     @SuppressWarnings("unchecked")
     public List<ApiEventStreamEntity> findEventsByEntityId(String entityId, int limit) {
+        // [2026-04-29] array_position → CAST(:entityId AS text) = ANY() 로 변경 (타입 불일치 수정)
         String sql = """
             SELECT DISTINCT es.* FROM event_stream es
             INNER JOIN event_stream_groups esg ON es.event_stream_id = esg.event_stream_id
-            WHERE array_position(string_to_array(esg.group_key, '|'), :entityId) IS NOT NULL
+            WHERE CAST(:entityId AS text) = ANY(string_to_array(esg.group_key, '|'))
             ORDER BY es.event_dt DESC
             LIMIT :limit
             """;
@@ -100,9 +107,10 @@ public class EntityHistoryRepository {
      * entity_id 관련 시나리오 탐지 개수
      */
     public long countScenariosByEntityId(String entityId) {
+        // [2026-04-29] array_position → CAST(:entityId AS text) = ANY() 로 변경 (타입 불일치 수정)
         String sql = """
             SELECT COUNT(*) FROM detect_scenarios ds
-            WHERE array_position(string_to_array(ds.group_key, '|'), :entityId) IS NOT NULL
+            WHERE CAST(:entityId AS text) = ANY(string_to_array(ds.group_key, '|'))
             """;
 
         return ((Number) entityManager.createNativeQuery(sql)
@@ -114,9 +122,10 @@ public class EntityHistoryRepository {
      * entity_id 관련 집계(룰) 탐지 개수
      */
     public long countAggregatesByEntityId(String entityId) {
+        // [2026-04-29] array_position → CAST(:entityId AS text) = ANY() 로 변경 (타입 불일치 수정)
         String sql = """
             SELECT COUNT(*) FROM detect_rules dr
-            WHERE array_position(string_to_array(dr.group_key, '|'), :entityId) IS NOT NULL
+            WHERE CAST(:entityId AS text) = ANY(string_to_array(dr.group_key, '|'))
             """;
 
         return ((Number) entityManager.createNativeQuery(sql)
@@ -128,9 +137,10 @@ public class EntityHistoryRepository {
      * entity_id 관련 룰 탐지 개수
      */
     public long countRulesByEntityId(String entityId) {
+        // [2026-04-29] array_position → CAST(:entityId AS text) = ANY() 로 변경 (타입 불일치 수정)
         String sql = """
             SELECT COUNT(*) FROM detect_rules dr
-            WHERE array_position(string_to_array(dr.group_key, '|'), :entityId) IS NOT NULL
+            WHERE CAST(:entityId AS text) = ANY(string_to_array(dr.group_key, '|'))
             """;
 
         return ((Number) entityManager.createNativeQuery(sql)
@@ -142,10 +152,11 @@ public class EntityHistoryRepository {
      * entity_id 관련 이벤트 개수
      */
     public long countEventsByEntityId(String entityId) {
+        // [2026-04-29] array_position → CAST(:entityId AS text) = ANY() 로 변경 (타입 불일치 수정)
         String sql = """
             SELECT COUNT(DISTINCT es.event_stream_id) FROM event_stream es
             INNER JOIN event_stream_groups esg ON es.event_stream_id = esg.event_stream_id
-            WHERE array_position(string_to_array(esg.group_key, '|'), :entityId) IS NOT NULL
+            WHERE CAST(:entityId AS text) = ANY(string_to_array(esg.group_key, '|'))
             """;
 
         return ((Number) entityManager.createNativeQuery(sql)
