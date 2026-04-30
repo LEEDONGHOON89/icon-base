@@ -19,7 +19,7 @@ public class AgentConfig {
     private String agentId;
 
     @JsonProperty("targets")
-    private List<TargetConfig> targets = List.of();
+    private List<TargetConfig> targets = new java.util.ArrayList<>();
 
     // [2026-02-25] 모니터링 설정 추가 (없으면 기본값 사용)
     @JsonProperty("monitoring")
@@ -62,12 +62,24 @@ public class AgentConfig {
         @JsonProperty("healthPort")
         private int healthPort = 8080;
 
+        // [2026-04-21] 관리 CLI API 포트 (agent-cli.ps1 전용, localhost-only)
+        @JsonProperty("adminPort")
+        private int adminPort = 8081;
+
         public int getHealthPort() {
             return healthPort;
         }
 
         public void setHealthPort(int healthPort) {
             this.healthPort = healthPort;
+        }
+
+        public int getAdminPort() {
+            return adminPort;
+        }
+
+        public void setAdminPort(int adminPort) {
+            this.adminPort = adminPort;
         }
     }
 }

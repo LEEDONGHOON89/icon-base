@@ -1,22 +1,26 @@
 import type { NextConfig } from "next";
 
+// [2026-04-17] API 프록시 방식으로 변경
+// 브라우저는 동일 오리진(/api/*)으로 호출 → Next.js 서버가 백엔드(localhost:11100)로 전달
+// 하드코딩된 서버 IP 제거, CORS 문제 해결
+const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:11100';
+
 const nextConfig: NextConfig = {
-  /* config options here */
+  output: 'standalone',
   eslint: {
-    // Warning: This allows production builds to successfully complete even if
-    // your project has ESLint errors.
     ignoreDuringBuilds: true,
   },
-
-  // 환경 변수 기본값 설정
-  // .env 파일이 없어도 이 값들이 사용됩니다
-  env: {
-    // 백엔드 API 주소 (개발/프로덕션 자동 전환)
-    NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL ||
-      (process.env.NODE_ENV === 'production'
-        ? 'http://localhost:11100'
-        : 'http://localhost:11100'),
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${BACKEND_URL}/api/:path*`,
+      },
+      {
+        source: '/rpc/:path*',
+        destination: `${BACKEND_URL}/rpc/:path*`,
+      },
+    ];
   },
 };
-console.log(nextConfig);
 export default nextConfig;

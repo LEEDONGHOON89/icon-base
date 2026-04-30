@@ -195,19 +195,22 @@ public class Step2Processor {
                 // destination_type 체크: event_stream을 저장하는 프로파일만 StreamKey 수집
                 if (profile.shouldStoreEventStream()) {
                     try {
-                        // StreamKey 생성 및 유효성 검증
+                        // [2026-04-23] StreamKey.of()는 timestampKey 미설정 시 null 반환 (exception 아님)
                         StreamKey streamKey = StreamKey.of(profile);
-                        if (streamKey.isValid()) {
+                        if (streamKey == null) {
+                            // timestampKey 미설정 프로파일 → event_stream 저장 불가, 경고만 기록
+                            log.warn("timestampKey 미설정으로 StreamKey 생성 불가 - profileId: {} (프로파일 관리 화면에서 타임스탬프 필드를 설정하세요)",
+                                    profile.getProfileId());
+                        } else if (streamKey.isValid()) {
                             streamKeys.add(streamKey);
                             log.debug("StreamKey 추가: {} (profile: {})",
                                     streamKey.toDisplayString(), profile.getProfileId());
                         } else {
-                            // TODO: groupKey 제거됨 - 로깅만 수정
                             log.warn("유효하지 않은 StreamKey 생략 - profile: {}, timestampKey: {}",
                                     profile.getProfileId(), profile.getTimestampKey());
                         }
                     } catch (Exception e) {
-                        log.error("StreamKey 생성 실패 - profile: {}", profile.getProfileId(), e);
+                        log.error("StreamKey 생성 중 예기치 않은 오류 - profile: {}", profile.getProfileId(), e);
                     }
                 } else {
                     log.debug("event_stream 저장 스킵 (collectActiveStreamKeys) - destination_type={}, profileId: {}",
@@ -275,7 +278,8 @@ public class Step2Processor {
 
     /**
      * Profile 설정에 따라 entity_attributes 저장
-     * - Profile의 destination_type이 ENTITY_ATTRIBUTES인 경우에만 저장
+     * - Profile의 destination_type이 ENTITY 또는 BOTH인 경우에만 저장
+     * [2026-04-24] 주석 수정: ENTITY_ATTRIBUTES → ENTITY 또는 BOTH
      * - Profile의 entity_type, entity_id_field, store_fields 설정 사용
      * 
      * @param mappedDataRows 저장할 데이터

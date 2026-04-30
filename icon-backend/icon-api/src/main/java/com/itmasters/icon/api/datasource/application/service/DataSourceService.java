@@ -1,8 +1,12 @@
 package com.itmasters.icon.api.datasource.application.service;
 
-import com.itmasters.icon.api.datasource.dto.DataSourceDto;
-import com.itmasters.icon.api.datasource.application.port.out.DataSourceRepository;
+import com.itmasters.icon.api.datasource.adapter.out.persistence.entity.DatabaseConfigEntity;
 import com.itmasters.icon.api.datasource.adapter.out.persistence.entity.DataSourceEntity;
+import com.itmasters.icon.api.datasource.adapter.out.persistence.entity.FileSystemConfigEntity;
+import com.itmasters.icon.api.datasource.adapter.out.persistence.repository.DatabaseConfigJpaRepository;
+import com.itmasters.icon.api.datasource.adapter.out.persistence.repository.FileSystemConfigJpaRepository;
+import com.itmasters.icon.api.datasource.application.port.out.DataSourceRepository;
+import com.itmasters.icon.api.datasource.dto.DataSourceDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -19,8 +23,12 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class DataSourceService {
-    
+
     private final DataSourceRepository dataSourceRepository;
+    // [2026-04-21] 활성화/비활성화 시 FileSystemConfigEntity·DatabaseConfigEntity 동기화 및 에이전트 COLLECTORS_SYNC 푸시
+    private final FileSystemConfigJpaRepository fileSystemConfigJpaRepository;
+    private final DatabaseConfigJpaRepository databaseConfigJpaRepository;
+    private final AgentSnapshotService agentSnapshotService;
     
     /**
      * 데이터 소스 생성
@@ -139,15 +147,18 @@ public class DataSourceService {
     public DataSourceDto.Info activateDataSource(String dataSourceId) {
         DataSourceEntity dataSource = dataSourceRepository.findById(dataSourceId)
                 .orElseThrow(() -> new RuntimeException("데이터 소스를 찾을 수 없습니다. ID: " + dataSourceId));
-        
+
         dataSource.activate();
         DataSourceEntity savedDataSource = dataSourceRepository.save(dataSource);
-        
-        // TODO: Rule mapping count 구현 필요
+
+        // [2026-04-21] FileSystemConfigEntity / DatabaseConfigEntity isActive 동기화
+        //              DataSourceEntity.isActive 변경이 스냅샷·COLLECTORS_SYNC에 반영되도록
+        syncConfigActiveState(dataSourceId, true);
+
         Long ruleCount = 0L;
         return savedDataSource.toInfoWithRuleCount(ruleCount);
     }
-    
+
     /**
      * 데이터 소스 비활성화
      */
@@ -155,13 +166,45 @@ public class DataSourceService {
     public DataSourceDto.Info deactivateDataSource(String dataSourceId) {
         DataSourceEntity dataSource = dataSourceRepository.findById(dataSourceId)
                 .orElseThrow(() -> new RuntimeException("데이터 소스를 찾을 수 없습니다. ID: " + dataSourceId));
-        
+
         dataSource.deactivate();
         DataSourceEntity savedDataSource = dataSourceRepository.save(dataSource);
-        
-        // TODO: Rule mapping count 구현 필요
+
+        // [2026-04-21] FileSystemConfigEntity / DatabaseConfigEntity isActive 동기화
+        syncConfigActiveState(dataSourceId, false);
+
         Long ruleCount = 0L;
         return savedDataSource.toInfoWithRuleCount(ruleCount);
+    }
+
+    /**
+     * [2026-04-21] ds_file_system_config / ds_database_config 의 is_active 를 DataSourceEntity와 동기화하고,
+     * 에이전트가 연결된 경우 COLLECTORS_SYNC 를 자동 푸시한다.
+     */
+    private void syncConfigActiveState(String dataSourceId, boolean active) {
+        String agentId = null;
+
+        var fsOpt = fileSystemConfigJpaRepository.findByDataSourceId(dataSourceId);
+        if (fsOpt.isPresent()) {
+            FileSystemConfigEntity fs = fsOpt.get();
+            if (active) { fs.activate(); } else { fs.deactivate(); }
+            fileSystemConfigJpaRepository.save(fs);
+            if (agentId == null) agentId = fs.getAgentId();
+        }
+
+        var dbOpt = databaseConfigJpaRepository.findByDataSourceId(dataSourceId);
+        if (dbOpt.isPresent()) {
+            DatabaseConfigEntity db = dbOpt.get();
+            if (active) { db.activate(); } else { db.deactivate(); }
+            databaseConfigJpaRepository.save(db);
+            if (agentId == null) agentId = db.getAgentId();
+        }
+
+        if (agentId != null && !agentId.isBlank()) {
+            log.info("[DataSource] isActive={} 변경 → 에이전트 COLLECTORS_SYNC 푸시: agentId={}, dataSourceId={}",
+                    active, agentId, dataSourceId);
+            agentSnapshotService.pushSnapshot(agentId);
+        }
     }
     
     // 기본 데이터 소스 설정 기능 제거

@@ -159,6 +159,7 @@ public class DataSourceOriginalSchemaDto {
             
             @Schema(description = "표준 필드 ID", example = "sf123")
             private String standardFieldId;
+
         }
     }
 
@@ -208,7 +209,6 @@ public class DataSourceOriginalSchemaDto {
         
         @Schema(description = "표준 필드명", example = "userId")
         private String standardFieldName;
-
     }
 
     /**
@@ -258,15 +258,15 @@ public class DataSourceOriginalSchemaDto {
      * 표준 필드 매핑 업데이트 요청
      */
     @Getter
-    @NoArgsConstructor(access = AccessLevel.PROTECTED)
+    @NoArgsConstructor
     @AllArgsConstructor
     @Builder
     @Schema(description = "표준 필드 매핑 업데이트 요청")
     public static class StandardFieldMappingRequest {
-        
+
         @Schema(description = "표준 필드 ID (null이면 매핑 해제)", example = "sf123")
         private String standardFieldId;
-        
+
         @Schema(description = "활성화 여부", example = "true")
         private Boolean isActive;
     }

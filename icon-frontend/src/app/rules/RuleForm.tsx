@@ -325,15 +325,16 @@ function RuleForm({
                 className="bg-gray-50"
               />
             ) : (
+              // [2026-04-23] AGG_ 접두사 필수 검증 추가 (권장 → 필수)
               <Input
-                label="룰 ID (AGG_ 프리픽스 권장)"
+                label="룰 ID (AGG_ 접두사 필수)"
                 {...register("ruleId", {
                   required: "룰 ID는 필수입니다.",
-                  minLength: { value: 2, message: "룰 ID는 2자 이상" },
+                  minLength: { value: 5, message: "룰 ID는 5자 이상 (AGG_ 포함)" },
                   maxLength: { value: 100, message: "룰 ID는 100자 이하" },
                   pattern: {
-                    value: /^[A-Z_][A-Z0-9_]*$/,
-                    message: "룰 ID는 대문자, 숫자, 언더스코어만 사용 가능합니다"
+                    value: /^AGG_[A-Z0-9_]+$/,
+                    message: "룰 ID는 AGG_로 시작해야 하며 대문자, 숫자, 언더스코어만 사용 가능합니다 (예: AGG_MULTIPLE_FAIL)"
                   }
                 })}
                 placeholder="예: AGG_MULTIPLE_FAIL"
@@ -393,6 +394,19 @@ function RuleForm({
 
           {/* 오른쪽: 집계/시퀀스/조건 설정 */}
           <div className="space-y-6 px-1 lg:col-span-2">
+
+            {/* [2026-04-23] 그룹핑 필드: 평가 모드와 무관하게 항상 표시 (SINGLE_ROW/WINDOW 모두 필수) */}
+            <div>
+              <Input
+                label="그룹핑 필드 (쉼표 구분)"
+                {...register("groupByFields")}
+                placeholder="예: CUS_ID, device_id"
+              />
+              <p className="text-xs text-gray-500 -mt-3">
+                탐지 기준 단위 필드 (필수). 예: CUS_ID → 고객별 탐지. 여러 필드는 쉼표로 구분
+              </p>
+            </div>
+
             {/* 집계 설정과 시퀀스 설정을 가로로 배치 */}
             {(showAggregationSettings || showSequenceSettings) && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -470,17 +484,6 @@ function RuleForm({
                         })}
                         placeholder="예: 10"
                       />
-                    </div>
-
-                    <div>
-                      <Input
-                        label="그룹화 필드 (쉼표 구분)"
-                        {...register("groupByFields")}
-                        placeholder="예: account_id, user_id"
-                      />
-                      <p className="text-xs text-gray-500 -mt-3">
-                        어떤 기준으로 묶을지 지정 (SQL의 GROUP BY). 예: account_id로 그룹화하면 계정별로 집계. 없으면 전체를 하나로 집계
-                      </p>
                     </div>
 
                     <div>

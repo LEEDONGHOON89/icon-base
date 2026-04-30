@@ -45,6 +45,8 @@ export default function EditScenarioPage() {
   const sectionRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
   // 시나리오 상세 정보 조회
+  // [2026-04-24] staleTime 추가 — 기본값(0)이면 윈도우 포커스 복귀 시마다 재조회되어
+  //              scenario 객체 참조가 바뀌고 ScenarioForm의 init effect가 entityFilters를 초기화함
   const { data: scenario, isLoading: scenarioLoading } = useQuery({
     queryKey: ["scenarios", scenarioId],
     queryFn: async () => {
@@ -55,9 +57,11 @@ export default function EditScenarioPage() {
       return result;
     },
     enabled: !!scenarioId,
+    staleTime: 5 * 60 * 1000,  // 5분간 캐시 — 편집 중 재조회로 인한 폼 초기화 방지
   });
 
   // 폼 제출 핸들러
+  // [2026-04-24] riskLevelId / detectionAreaId / primaryEntityType / isActive / dedupMinutes 누락 필드 추가
   const handleSubmit = async (data: ScenarioFormData) => {
     if (!scenarioId) {
       toast.error("시나리오 ID가 없습니다.");
@@ -67,7 +71,12 @@ export default function EditScenarioPage() {
     const request: UpdateScenarioRequest = {
       scenarioName: data.scenarioName,
       description: data.description,
+      riskLevelId: data.riskLevelId || undefined,
+      detectionAreaId: data.detectionAreaId || undefined,
+      primaryEntityType: data.primaryEntityType || undefined,
       entityFilterJson: data.entityFilterJson,
+      isActive: data.isActive,
+      dedupMinutes: (data.dedupMinutes != null && !isNaN(data.dedupMinutes)) ? data.dedupMinutes : 0,
       rules: data.rules.map((rule) => ({
         ruleId: rule.ruleId,
         orderNo: rule.orderNo,

@@ -322,15 +322,14 @@ export default function ScenariosPage() {
                   )}
 
                   {/* 편집 버튼 */}
-                  <a
-                    href={`/scenarios/${scenario.scenarioId}/edit`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  {/* [2026-04-24] 새 창(target="_blank") → 현재 탭 페이지 전환(router.push)으로 변경 */}
+                  <button
+                    onClick={() => router.push(`/scenarios/${scenario.scenarioId}/edit`)}
                     className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium mt-4"
                   >
                     <PencilIcon className="h-4 w-4" />
                     편집
-                  </a>
+                  </button>
                 </div>
               ))}
             </div>
@@ -427,15 +426,14 @@ export default function ScenariosPage() {
                         </button>
                       </div>
 
-                      <a
-                        href={`/scenarios/${scenario.scenarioId}/edit`}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      {/* [2026-04-24] 새 창(target="_blank") → 현재 탭 페이지 전환(router.push)으로 변경 */}
+                      <button
+                        onClick={() => router.push(`/scenarios/${scenario.scenarioId}/edit`)}
                         className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                        title="새 창에서 수정"
+                        title="수정"
                       >
                         <PencilIcon className="h-5 w-5" />
-                      </a>
+                      </button>
                     </div>
                   </div>
                 </div>

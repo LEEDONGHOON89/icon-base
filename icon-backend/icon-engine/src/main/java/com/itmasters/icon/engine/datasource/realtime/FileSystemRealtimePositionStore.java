@@ -78,6 +78,21 @@ public class FileSystemRealtimePositionStore {
         return resolveStoreDir(dataSourceId).resolve("positions.json");
     }
 
+    // [2026-04-22] 파일 읽기 위치 초기화 — 처음부터 재수집 지원
+    public void delete(String dataSourceId) {
+        Path storeFile = resolveStoreFile(dataSourceId);
+        try {
+            if (Files.deleteIfExists(storeFile)) {
+                log.info("[{}] Position file deleted for reset", dataSourceId);
+            } else {
+                log.info("[{}] Position file not found (already reset or never existed)", dataSourceId);
+            }
+        } catch (IOException e) {
+            log.error("[{}] Failed to delete position file: {}", dataSourceId, e.getMessage(), e);
+            throw new RuntimeException("파일 위치 정보 삭제 실패: " + e.getMessage(), e);
+        }
+    }
+
     private Path resolveStoreDir(String dataSourceId) {
         return Path.of(ROOT_DIR, dataSourceId);
     }

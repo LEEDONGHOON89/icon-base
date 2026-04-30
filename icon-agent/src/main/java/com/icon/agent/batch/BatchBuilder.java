@@ -25,10 +25,11 @@ public class BatchBuilder {
 
     private final String targetId;
     private final RecordQueue queue;
-    private final int maxBatchSize;
-    private final long maxBatchMs;
+    // [2026-04-22] CONFIG_UPDATE 시 런타임 반영을 위해 volatile non-final 로 변경
+    private volatile int maxBatchSize;
+    private volatile long maxBatchMs;
     // [2026-02-25] 1번: 배치 최대 바이트 크기 (0이면 제한 없음)
-    private final long maxBatchBytes;
+    private volatile long maxBatchBytes;
 
     // [2026-02-25] 1번: 바이트 한도 초과로 다음 배치에 이월된 레코드 버퍼
     private Record pendingRecord = null;
@@ -97,6 +98,18 @@ public class BatchBuilder {
         log.debug("[{}] 배치 조립 완료: {}건 / 약 {}bytes → batchId={}",
                 targetId, batch.size(), accumulatedBytes, batch.getBatchId());
         return batch;
+    }
+
+    /**
+     * [2026-04-22] CONFIG_UPDATE 수신 시 배치 설정 런타임 갱신.
+     * volatile 필드이므로 스레드 안전하게 즉시 반영됨.
+     */
+    public void updateBatchSettings(int maxBatchSize, long maxBatchMs, long maxBatchBytes) {
+        this.maxBatchSize = maxBatchSize;
+        this.maxBatchMs   = maxBatchMs;
+        this.maxBatchBytes = maxBatchBytes;
+        log.info("[{}] 배치 설정 런타임 갱신 — maxBatchSize={}, maxBatchMs={}ms, maxBatchBytes={}bytes",
+                targetId, maxBatchSize, maxBatchMs, maxBatchBytes);
     }
 
     /**

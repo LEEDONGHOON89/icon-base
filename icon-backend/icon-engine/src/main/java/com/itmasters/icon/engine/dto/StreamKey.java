@@ -34,6 +34,12 @@ public class StreamKey {
      *
      * TODO: groupKey 컬럼 제거됨 - aggregate.group_by_fields로 재구현 필요
      * 임시로 기본값 사용 (entity_id_field 또는 DEFAULT_GROUP_KEY)
+     *
+     * [2026-04-23] timestampKey null 시 exception 대신 null 반환으로 소프트 처리
+     *   - 호출부(Step2Processor)에서 null 체크 후 스킵 처리
+     *   - 프로파일 저장 UI에서 timestampKey 미입력 시 매 수집마다 ERROR 로그 발생하던 문제 해결
+     *
+     * @return StreamKey 또는 null (timestampKey 미설정 시)
      */
     public static StreamKey of(EngineProfileEntity profile) {
         if (profile == null) {
@@ -49,8 +55,9 @@ public class StreamKey {
 
         String timestampKey = profile.getTimestampKey();
 
+        // [2026-04-23] exception 대신 null 반환 - 호출부에서 스킵 처리
         if (timestampKey == null || timestampKey.trim().isEmpty()) {
-            throw new IllegalArgumentException("TimestampKey cannot be null or empty");
+            return null;
         }
 
         StreamKey streamKey = new StreamKey();

@@ -185,9 +185,20 @@ public class DataProfileService implements DataProfileUseCase {
 
         // Entity Attributes 필드 저장
         if (request.getDestinationType() != null) {
-            existingProfile.setDestinationType(
-                com.itmasters.icon.api.common.domain.type.DestinationType.valueOf(request.getDestinationType())
-            );
+            com.itmasters.icon.api.common.domain.type.DestinationType destType =
+                    com.itmasters.icon.api.common.domain.type.DestinationType.valueOf(request.getDestinationType());
+            existingProfile.setDestinationType(destType);
+
+            // [2026-04-23] EVENT_STREAM destination 선택 시 timestampKey 필수 검증
+            boolean needsTimestamp = destType == com.itmasters.icon.api.common.domain.type.DestinationType.EVENT_STREAM
+                    || destType == com.itmasters.icon.api.common.domain.type.DestinationType.BOTH;
+            if (needsTimestamp) {
+                String tsKey = request.getTimestampKey();
+                if (tsKey == null || tsKey.trim().isEmpty()) {
+                    throw new IllegalArgumentException(
+                            "이벤트 스트림 저장 방식 선택 시 타임스탬프 필드는 필수입니다.");
+                }
+            }
         }
         if (request.getEntityType() != null) {
             existingProfile.setEntityType(
@@ -200,9 +211,15 @@ public class DataProfileService implements DataProfileUseCase {
         if (request.getStoreFields() != null) {
             existingProfile.setStoreFields(request.getStoreFields());
         }
+        // [2026-04-23] timestampKey 저장
+        if (request.getTimestampKey() != null) {
+            existingProfile.setTimestampKey(request.getTimestampKey().trim().isEmpty()
+                    ? null : request.getTimestampKey().trim());
+        }
 
         ProfileEntity savedProfile = profileRepository.save(existingProfile);
-        log.info("프로파일 수정 완료 - profileId: {}, detectKey: {}", savedProfile.getProfileId(), savedProfile.getGroupKey());
+        log.info("프로파일 수정 완료 - profileId: {}, detectKey: {}, timestampKey: {}",
+                savedProfile.getProfileId(), savedProfile.getGroupKey(), savedProfile.getTimestampKey());
         
         return DataProfileDto.Response.from(savedProfile);
     }
@@ -266,23 +283,23 @@ public class DataProfileService implements DataProfileUseCase {
                 if (detectKey.contains(",")) {
                     throw new IllegalArgumentException("SINGLE 타입의 detect_key는 쉼표를 포함할 수 없습니다.");
                 }
-                // 표준 필드명 형식 검증 (소문자, 언더스코어만 허용)
-                if (!detectKey.matches("^[a-z_]+$")) {
-                    throw new IllegalArgumentException("SINGLE 타입의 detect_key는 소문자와 언더스코어만 포함할 수 있습니다.");
+                // [2026-04-23] 표준 필드명 형식 검증: 대소문자+숫자+언더스코어 허용 (CUS_ID 등 대문자 표준필드 지원)
+                if (!detectKey.matches("^[a-zA-Z0-9_]+$")) {
+                    throw new IllegalArgumentException("SINGLE 타입의 detect_key는 영문자, 숫자, 언더스코어만 포함할 수 있습니다.");
                 }
                 break;
-                
+
             case COMPOSITE:
                 // 복합 키는 쉼표로 구분된 여러 필드
                 String[] fields = detectKey.split(",");
                 if (fields.length < 2) {
                     throw new IllegalArgumentException("COMPOSITE 타입의 detect_key는 최소 2개 이상의 필드를 포함해야 합니다.");
                 }
-                // 각 필드명 검증
+                // [2026-04-23] 각 필드명 검증: 대소문자+숫자+언더스코어 허용 (CUS_ID 등 대문자 표준필드 지원)
                 for (String field : fields) {
                     String trimmedField = field.trim();
-                    if (!trimmedField.matches("^[a-z_]+$")) {
-                        throw new IllegalArgumentException("COMPOSITE 타입의 각 필드는 소문자와 언더스코어만 포함할 수 있습니다: " + trimmedField);
+                    if (!trimmedField.matches("^[a-zA-Z0-9_]+$")) {
+                        throw new IllegalArgumentException("COMPOSITE 타입의 각 필드는 영문자, 숫자, 언더스코어만 포함할 수 있습니다: " + trimmedField);
                     }
                 }
                 break;

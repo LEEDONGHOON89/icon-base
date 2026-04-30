@@ -24,9 +24,10 @@
 | 2-14 | 탐지모니터링 | AI 모니터링 | ⚠️ 미개발 | - |
 | 2-15 | 감사 | 변경이력 | ✅ | `/audit` |
 | 2-16 | 시스템 설정 | 데이터소스 | ✅ | `/data-sources` |
-| 2-17 | 시스템 설정 | 표준 필드 | ✅ 읽기전용 | `/fields` |
-| 2-18 | 시스템 설정 | 엔티티 필드 | ✅ 읽기전용 | `/entity-fields` |
+| 2-17 | 시스템 설정 | 표준 필드 | ✅ | `/fields` |
+| 2-18 | 시스템 설정 | 엔티티 필드 | ✅ CRUD 관리 | `/fields/entity` |
 | 2-19 | 탐지모니터링 | 실행이력 | ⛔ 사용안함 | `/detections/executions` |
+| 2-20 | 시스템 설정 | 파서 관리 | ✅ | `/parsers` |
 
 ---
 
@@ -376,9 +377,13 @@
 
 ---
 
-## 2-17. 표준 필드 ✅ 읽기전용
+## 2-17. 표준 필드 ✅
 
 **경로**: `/fields`
+
+### 기능
+- 표준 필드 CRUD (추가/수정/삭제)
+- 필드 ID / 표시명 검색
 
 ### 컬럼
 - 필드 ID (monospace, 알파벳 정렬)
@@ -387,18 +392,63 @@
 - 카테고리
 - 활성 상태
 - 설명
+- 작업 버튼 (수정/삭제)
+
+### 필드 ID 규칙
+- 영문자로 시작, 영문자/숫자/언더스코어만 허용
+- 생성 후 변경 불가 (standard_field_id = PK)
+
+### 수정 가능 항목
+- 표시명, 데이터 타입, 카테고리, 설명, 활성 상태
 
 ---
 
-## 2-18. 엔티티 필드 ✅ 읽기전용
+## 2-18. 엔티티 필드 ✅ CRUD 관리
 
-**경로**: `/entity-fields`
+**경로**: `/fields/entity`
 
-### 컬럼
-- 표준 필드와 동일한 구성
+> [2026-04-24] 읽기전용 → 등록/수정/삭제 CRUD 관리 화면으로 확장
+
+### 기능
+- 엔티티 필드 목록 조회 (검색 포함)
+- 신규 필드 등록 (모달) — entityFieldId, displayName, dataType, description
+- 필드 수정 (모달) — displayName, dataType, description, 활성화 토글
+- 필드 삭제 (확인 모달)
+
+### 연동 API
+- `GET /api/v1/entity-fields/all` — 전체 목록 (비활성 포함)
+- `POST /api/v1/entity-fields` — 등록
+- `PUT /api/v1/entity-fields/{entityFieldId}` — 수정
+- `DELETE /api/v1/entity-fields/{entityFieldId}` — 삭제
+
+### 초기 데이터 (V1_0_14)
+고객: customer_age, grade, owned_accounts, region  
+계좌: account_number, account_type, open_date, open_type, owner_id, status
 
 ---
 
 ## 2-19. 실행이력 ⛔ 사용안함
 
 트랜잭션 추적(`/transactions`)으로 대체된 것으로 추정.
+
+---
+
+## 2-20. 파서 관리 ✅
+
+**경로**: `/parsers`
+
+### 기능
+- 파서 목록/생성/수정/삭제 (CRUD)
+- 데이터소스 원본 필드에서 파서 선택 연동
+
+### 파서 타입
+| 타입 | 설명 | config_json 예시 |
+|---|---|---|
+| DELIMITER | 구분자로 값을 분리하여 인덱스로 추출 | `{"delimiter":"|","index":0}` |
+| FIXED_WIDTH | 바이트 위치와 길이로 값을 추출 | `{"startByte":0,"byteLength":10}` |
+| REGEX | 정규식 캡처 그룹으로 값을 추출 | `{"pattern":"^(\w+)","group":1}` |
+
+### 구조
+- parsers(1) : parser_rules(N) — 파서 1개에 N개의 추출 규칙
+- data_source_schemas.parser_id(FK) → parsers — 원본 필드 1개에 파서 1개 연동
+- 파서 적용 시: 원본 필드 1개 값 → N개 추출 필드로 분리하여 mapped_storages에 저장

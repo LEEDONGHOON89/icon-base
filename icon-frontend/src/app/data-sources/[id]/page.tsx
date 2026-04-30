@@ -25,12 +25,21 @@ import {
   PlayIcon,
   CogIcon,
   RocketLaunchIcon,
+  ArrowPathIcon,
+  ExclamationTriangleIcon,
 } from "@heroicons/react/24/outline";
 import OriginalSchemaView from "@/components/datasource/OriginalSchemaView";
 import ProfileManagementView from "@/components/profile/ProfileManagementView";
+// [2026-04-20] 파서 연결 섹션
+import DataSourceParserSection from "@/components/datasource/DataSourceParserSection";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { toast } from "react-hot-toast";
 import { useErrorHandling } from "@/hooks/useErrorHandling";
+// [2026-04-22] 수집기 초기화 API
+import { resetCollection } from "@/app/data-sources/api";
+// [2026-04-22] 수집 원본 / 매핑 결과 조회 컴포넌트 — TODO-001/002
+import LandingRecordView from "@/components/datasource/LandingRecordView";
+import MappedStorageView from "@/components/datasource/MappedStorageView";
 
 // 아이콘 매핑
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -57,7 +66,10 @@ export default function DataSourceDetailPage() {
     name: "",
     description: "",
   });
-  const [activeTab, setActiveTab] = useState<"overview" | "config" | "originalSchema" | "profileSchema">("overview");
+  // [2026-04-22] "landing"(수집 원본), "mapped"(매핑 결과) 탭 추가 — TODO-001/002
+  const [activeTab, setActiveTab] = useState<"overview" | "config" | "originalSchema" | "profileSchema" | "parsers" | "landing" | "mapped">("overview");
+  // [2026-04-22] 수집기 초기화 확인 다이얼로그 상태
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // 데이터 소스 상세 정보 조회
   const { data: dataSource, isLoading } = useQueryWithErrorHandling({
@@ -81,6 +93,20 @@ export default function DataSourceDetailPage() {
   const { data: originalSchemas = [] } = useQueryWithErrorHandling({
     queryKey: ["dataSourceOriginalSchemas", dataSourceId],
     queryFn: () => fetchDataSourceOriginalSchemas(dataSourceId),
+  });
+
+  // [2026-04-22] 수집기 초기화 mutation
+  const resetMutation = useMutation({
+    mutationFn: () => resetCollection(dataSourceId),
+    onSuccess: (result) => {
+      setShowResetConfirm(false);
+      if (result.mode === "AGENT" && result.agentConnected === false) {
+        toast("⚠️ " + result.message, { duration: 5000 });
+      } else {
+        toast.success(result.message);
+      }
+    },
+    onError: handleError,
   });
 
   // 수정 mutation
@@ -355,6 +381,38 @@ export default function DataSourceDetailPage() {
             >
               프로파일 관리
             </button>
+            {/* [2026-04-21] DATABASE 타입은 JDBC 직접 수집이므로 파서 설정 탭 미표시 */}
+            {dataSource.sourceType !== "DATABASE" && (
+              <button
+                className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === "parsers"
+                    ? "border-blue-500 text-blue-600"
+                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                  }`}
+                onClick={() => setActiveTab("parsers")}
+              >
+                파서 설정
+              </button>
+            )}
+            {/* [2026-04-22] 수집 원본 탭 — TODO-001 */}
+            <button
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === "landing"
+                  ? "border-blue-500 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
+              onClick={() => setActiveTab("landing")}
+            >
+              수집 원본
+            </button>
+            {/* [2026-04-22] 매핑 결과 탭 — TODO-002 */}
+            <button
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === "mapped"
+                  ? "border-blue-500 text-blue-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
+              onClick={() => setActiveTab("mapped")}
+            >
+              매핑 결과
+            </button>
           </nav>
         </div>
 
@@ -438,7 +496,7 @@ export default function DataSourceDetailPage() {
           )}
 
           {activeTab === "config" && (
-            <div>
+            <div className="space-y-6">
               {/* 타입에 따른 연결 설정 폼 */}
               {/* dynamic import 회피를 위해 require 사용 */}
               {(() => {
@@ -446,6 +504,64 @@ export default function DataSourceDetailPage() {
                 const ConfigForm = require("@/components/datasource/ConfigForm").default;
                 return <ConfigForm dataSource={dataSource} />;
               })()}
+
+              {/* [2026-04-22] 수집 초기화 섹션 — DATABASE / FILE_SYSTEM / FILE_SYSTEM_REALTIME만 표시 */}
+              {(dataSource.sourceType === "DATABASE" ||
+                dataSource.sourceType === "FILE_SYSTEM" ||
+                dataSource.sourceType === "FILE_SYSTEM_REALTIME") && (
+                <div className="border border-red-200 rounded-xl p-5 bg-red-50">
+                  <div className="flex items-start gap-3">
+                    <ExclamationTriangleIcon className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1">
+                      <h4 className="text-sm font-semibold text-red-800">수집 초기화</h4>
+                      <p className="mt-1 text-xs text-red-600">
+                        마지막 수집 위치(last_position)를 초기화하여 파일 또는 DB를 처음부터 재수집합니다.
+                        기존 수집 데이터는 삭제되지 않으며 수집 위치 정보만 초기화됩니다.
+                      </p>
+                      {!showResetConfirm ? (
+                        <button
+                          onClick={() => setShowResetConfirm(true)}
+                          className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-red-700 bg-white border border-red-300 rounded-lg hover:bg-red-50 transition-colors"
+                        >
+                          <ArrowPathIcon className="h-4 w-4" />
+                          수집 초기화
+                        </button>
+                      ) : (
+                        <div className="mt-3 p-3 bg-white border border-red-300 rounded-lg space-y-2">
+                          <p className="text-xs font-medium text-red-800">
+                            정말로 수집 위치를 초기화하시겠습니까?
+                          </p>
+                          <p className="text-xs text-red-600">
+                            초기화 후 다음 수집 주기에 처음부터 재수집됩니다.
+                            중복 수집이 발생할 수 있습니다.
+                          </p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => resetMutation.mutate()}
+                              disabled={resetMutation.isPending}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
+                            >
+                              {resetMutation.isPending ? (
+                                <span className="animate-spin h-3 w-3 border border-white border-t-transparent rounded-full" />
+                              ) : (
+                                <ArrowPathIcon className="h-3 w-3" />
+                              )}
+                              초기화 확인
+                            </button>
+                            <button
+                              onClick={() => setShowResetConfirm(false)}
+                              disabled={resetMutation.isPending}
+                              className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                            >
+                              취소
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -461,6 +577,21 @@ export default function DataSourceDetailPage() {
               dataSourceId={dataSourceId}
               dataSourceName={dataSource.name}
             />
+          )}
+
+          {/* [2026-04-21] DATABASE 타입은 파서 설정 탭 미표시 */}
+          {activeTab === "parsers" && dataSource.sourceType !== "DATABASE" && (
+            <DataSourceParserSection dataSourceId={dataSourceId} />
+          )}
+
+          {/* [2026-04-22] 수집 원본 조회 — TODO-001 */}
+          {activeTab === "landing" && (
+            <LandingRecordView dataSourceId={dataSourceId} />
+          )}
+
+          {/* [2026-04-22] 매핑 결과 조회 — TODO-002 */}
+          {activeTab === "mapped" && (
+            <MappedStorageView dataSourceId={dataSourceId} />
           )}
 
         </div>

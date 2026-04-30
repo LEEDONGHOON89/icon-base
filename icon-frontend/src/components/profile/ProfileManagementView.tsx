@@ -101,7 +101,8 @@ export default function ProfileManagementView({
     destinationType?: string,
     entityType?: string,
     entityIdField?: string,
-    storeFields?: string[]
+    storeFields?: string[],
+    timestampKey?: string
   ) => {
     if (!selectedProfile) return;
 
@@ -118,6 +119,8 @@ export default function ProfileManagementView({
         entityType: entityType || undefined,
         entityIdField: entityIdField || undefined,
         storeFields: storeFields || undefined,
+        // [2026-04-23] timestampKey 추가
+        timestampKey: timestampKey || undefined,
       };
 
       await updateDataProfile(selectedProfile.profileId, profileUpdateRequest);
@@ -131,6 +134,7 @@ export default function ProfileManagementView({
         entityType,
         entityIdField,
         storeFields,
+        timestampKey,
       });
 
       // 프로파일 목록 쿼리 무효화

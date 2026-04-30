@@ -61,7 +61,8 @@ public class Scenario extends Auditable {
         scenario.entityFilterJson = (entityFilterJson == null || entityFilterJson.trim().isEmpty()) ? null : entityFilterJson;
         scenario.riskLevelId = riskLevelId;
         scenario.detectionAreaId = detectionAreaId;
-        scenario.primaryEntityType = primaryEntityType;
+        // [2026-04-24] primaryEntityType NOT NULL 제약 — null/blank 이면 DB DEFAULT 'CUSTOMER' 적용
+        scenario.primaryEntityType = (primaryEntityType != null && !primaryEntityType.isBlank()) ? primaryEntityType : "CUSTOMER";
         scenario.dedupMinutes = dedupMinutes;
         scenario.isActive = true;
         return scenario;

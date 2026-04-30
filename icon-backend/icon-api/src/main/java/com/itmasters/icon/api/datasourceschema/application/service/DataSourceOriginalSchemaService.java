@@ -104,7 +104,7 @@ public class DataSourceOriginalSchemaService {
                         schema.unmapStandardField();
                     }
                 }
-                
+
                 allSchemas.add(schema);
             } else {
                 // 새 필드 생성
@@ -131,7 +131,7 @@ public class DataSourceOriginalSchemaService {
                             .orElseThrow(() -> new IllegalArgumentException("표준 필드를 찾을 수 없습니다: " + request.getStandardFieldId()));
                     newSchema.setStandardField(standardField);
                 }
-                
+
                 allSchemas.add(newSchema);
             }
         }
@@ -167,7 +167,7 @@ public class DataSourceOriginalSchemaService {
         if (request.getIsActive() != null) {
             schema.updateActiveStatus(request.getIsActive());
         }
-        
+
         DataSourceOriginalSchemaEntity saved = originalSchemaRepository.save(schema);
         return toResponse(saved);
     }
@@ -188,6 +188,7 @@ public class DataSourceOriginalSchemaService {
                 .isActive(entity.isActive())
                 .standardFieldId(entity.getStandardField() != null ? entity.getStandardField().getStandardFieldId() : null)
                 .standardFieldName(entity.getStandardField() != null ? entity.getStandardField().getStandardFieldId() : null)
+                // [2026-04-20] 파서 연동
                 .build();
     }
 

@@ -1,27 +1,8 @@
 ---
 agent:
   healthPort: 8080
-agentId: "agent1"
-targets:
-- id: "icon-backend"
-  rpc:
-    endpoint: "ws://localhost:11100/rpc"
-    tls:
-      keystorePath: "certs/agent.p12"
-      keystorePassword: "changeit"
-      truststorePath: "certs/truststore.p12"
-      truststorePassword: "1234qwer!@"
-      keystoreType: "PKCS12"
-      insecureTrustAll: false
-    reconnectBaseMs: 1000
-    reconnectMaxMs: 60000
-    ackTimeoutMs: 30000
-    compress: false
-  collectors:[]
-  queueCapacity: 10000
-  maxBatchSize: 102
-  maxBatchMs: 550
-  maxBatchBytes: 0
+  adminPort: 8081
+agentId: "agent-bd8e08187dd7"
 monitoring:
   enabled: true
   intervalMs: 30000

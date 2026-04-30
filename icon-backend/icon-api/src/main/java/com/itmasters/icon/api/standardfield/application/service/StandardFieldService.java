@@ -74,6 +74,62 @@ public class StandardFieldService {
                 .collect(Collectors.toList());
     }
     
+    // [2026-04-20] 표준 필드 생성
+    @Transactional
+    public StandardFieldDto.Response createStandardField(StandardFieldDto.Create request) {
+        if (standardFieldRepository.existsById(request.getFieldName())) {
+            throw new IllegalArgumentException("이미 존재하는 필드 ID입니다: " + request.getFieldName());
+        }
+
+        String displayName = (request.getDisplayName() != null && !request.getDisplayName().isBlank())
+                ? request.getDisplayName() : request.getFieldName();
+
+        StandardField field = StandardField.createWithDetails(
+                request.getFieldName(),
+                request.getCategory(),
+                displayName,
+                request.getDataType(),
+                request.getDescription()
+        );
+        field.assignId(request.getFieldName());
+
+        StandardField saved = standardFieldRepository.save(field);
+        return toDto(saved);
+    }
+
+    // [2026-04-20] 표준 필드 수정
+    @Transactional
+    public StandardFieldDto.Response updateStandardField(String fieldId, StandardFieldDto.Update request) {
+        StandardField field = standardFieldRepository.findById(fieldId)
+                .orElseThrow(() -> new IllegalArgumentException("표준 필드를 찾을 수 없습니다: " + fieldId));
+
+        field.updateFieldInfo(request.getDisplayName(), request.getDescription());
+
+        if (request.getCategory() != null) {
+            field.updateCategory(request.getCategory());
+        }
+        if (request.getDataType() != null) {
+            field.updateDataType(request.getDataType());
+        }
+        if (Boolean.TRUE.equals(request.getIsActive())) {
+            field.activate();
+        } else if (Boolean.FALSE.equals(request.getIsActive())) {
+            field.deactivate();
+        }
+
+        StandardField saved = standardFieldRepository.save(field);
+        return toDto(saved);
+    }
+
+    // [2026-04-20] 표준 필드 삭제
+    @Transactional
+    public void deleteStandardField(String fieldId) {
+        if (!standardFieldRepository.existsById(fieldId)) {
+            throw new IllegalArgumentException("표준 필드를 찾을 수 없습니다: " + fieldId);
+        }
+        standardFieldRepository.deleteById(fieldId);
+    }
+
     /**
      * StandardField를 DTO로 변환
      */

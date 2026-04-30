@@ -53,6 +53,10 @@ export interface FileSystemConfig {
   lastErrorMessage?: string;
   // [2026-03-12] FILE_SYSTEM_REALTIME → 에이전트 연결 정보
   agentId?: string;
+  // [2026-04-21] 에이전트 폴링 설정
+  pollIntervalMs?: number;
+  maxLinesPerPoll?: number;
+  maxRecordBytes?: number;
 }
 
 export interface DatabaseConfig {
@@ -73,12 +77,22 @@ export interface DatabaseConfig {
   mainQuery?: string;
   incrementalColumn?: string;
   incrementalColumnType?: string;
+  // [2026-04-21] 증분 컬럼 초기값 — 첫 수집 시 시작 하이워터마크
+  incrementalColumnInitialValue?: string;
+  // [2026-04-22] 보조 증분 컬럼 — 복합 키 기반 증분 수집 (선택사항, mainQuery에 두 번째 ? 필요)
+  secondaryIncrementalColumn?: string;
+  secondaryIncrementalColumnType?: string;
+  secondaryIncrementalColumnInitialValue?: string;
   batchSize?: number;
   isActive?: boolean;
   connectionStatus?: string;
   lastErrorMessage?: string;
   // [2026-03-13] DATABASE → 에이전트 연결 정보 (에이전트가 JDBC 폴링 후 Push하는 경우)
   agentId?: string;
+  // [2026-04-21] 에이전트 폴링 설정
+  pollIntervalMs?: number;
+  maxLinesPerPoll?: number;
+  maxRecordBytes?: number;
 }
 
 export interface DataSourceConfigResponse {
@@ -160,6 +174,26 @@ export const deactivateDataSource = async (id: string): Promise<DataSource> => {
   return response.data;
 };
 
+// [2026-04-22] 수집기 초기화 결과 타입
+export interface CollectionResetResult {
+  dataSourceId: string;
+  type: string;
+  mode: "DIRECT" | "AGENT";
+  agentId?: string;
+  collectorId?: string;
+  agentConnected?: boolean;
+  deletedLogs?: number;
+  message: string;
+}
+
+// [2026-04-22] 수집기 초기화 — last_position 초기화하여 처음부터 재수집
+export const resetCollection = async (dataSourceId: string): Promise<CollectionResetResult> => {
+  const response = await api.post<CollectionResetResult>(
+    `/api/v1/data-sources/${dataSourceId}/reset-collection`
+  );
+  return response.data;
+};
+
 // ======== 필드 데이터 타입 ========
 
 // 탐지키 타입
@@ -202,6 +236,8 @@ export interface DataProfile {
   entityType?: string;
   entityIdField?: string;
   storeFields?: string[];
+  // [2026-04-23] event_stream 타임스탬프 필드명
+  timestampKey?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -230,6 +266,8 @@ export interface DataProfileUpdateRequest {
   entityType?: string;
   entityIdField?: string;
   storeFields?: string[];
+  // [2026-04-23] event_stream 타임스탬프 필드명 (EVENT_STREAM 선택 시 필수)
+  timestampKey?: string;
 }
 
 // ======== 데이터 프로파일 API 함수들 ========
@@ -450,4 +488,136 @@ export const syncDefaultProfileSchemas = async (
   dataSourceId: string
 ): Promise<void> => {
   await api.post(`/api/v1/profile-schemas/sync-default/${dataSourceId}`);
+};
+
+// ===== [2026-04-22] 수집 원본 조회 (TODO-001) =====
+
+export interface LandingRecordSummary {
+  total: number;
+  transformedCount: number;
+  failedCount: number;
+  lastExtractedAt?: string;
+}
+
+export interface LandingRecord {
+  landingRecordId: number;
+  execDsMpId?: number;
+  dataSourceId: string;
+  sourceType: string;
+  rowIndex?: number;
+  rawPayload: Record<string, unknown>;
+  ingestionStatus: "NEW" | "TRANSFORMED" | "FAILED";
+  ingestionMessage?: string;
+  extractedAt: string;
+}
+
+export interface LandingRecordPageResponse {
+  data: LandingRecord[];
+  total: number;
+  page: number;
+  size: number;
+  summary: LandingRecordSummary;
+}
+
+export interface LandingRecordSearchParams {
+  startDate?: string;
+  endDate?: string;
+  ingestionStatus?: string[];
+  custNo?: string;
+  jsonFilters?: string[];
+  page?: number;
+  size?: number;
+}
+
+export const fetchLandingRecords = async (
+  dataSourceId: string,
+  params: LandingRecordSearchParams
+): Promise<LandingRecordPageResponse> => {
+  const qs = new URLSearchParams();
+  if (params.startDate) qs.append("startDate", params.startDate);
+  if (params.endDate) qs.append("endDate", params.endDate);
+  params.ingestionStatus?.forEach((s) => qs.append("ingestionStatus", s));
+  if (params.custNo) qs.append("custNo", params.custNo);
+  params.jsonFilters?.forEach((f) => qs.append("jsonFilters", f));
+  if (params.page !== undefined) qs.append("page", String(params.page));
+  if (params.size !== undefined) qs.append("size", String(params.size));
+  const response = await api.get<LandingRecordPageResponse>(
+    `/api/v1/data-sources/${dataSourceId}/landing-records?${qs}`
+  );
+  return response.data;
+};
+
+// ===== [2026-04-22] 매핑 결과 조회 (TODO-002) =====
+
+export interface MappedStorageSummary {
+  total: number;
+  completedCount: number;
+  failedCount: number;
+  lastRegDt?: string;
+}
+
+export interface MappedStorage {
+  mappedStorageId: number;
+  landingRecordId: number;
+  execDsMpId?: number;
+  dataSourceId: string;
+  transactionId?: string;
+  rowIndex?: number;
+  rowData: Record<string, unknown>;
+  processingStatus: "NEW" | "PROCESSING" | "COMPLETED" | "FAILED";
+  errorMessage?: string;
+  regDt: string;
+}
+
+export interface MappedStoragePageResponse {
+  data: MappedStorage[];
+  total: number;
+  page: number;
+  size: number;
+  summary: MappedStorageSummary;
+}
+
+export interface MappedStorageDetailWithOrigin {
+  mappedStorage: MappedStorage;
+  originLandingRecordId: number;
+  rawPayload: Record<string, unknown>;
+}
+
+export interface MappedStorageSearchParams {
+  startDate?: string;
+  endDate?: string;
+  processingStatus?: string[];
+  transactionId?: string;
+  custNo?: string;
+  jsonFilters?: string[];
+  page?: number;
+  size?: number;
+}
+
+export const fetchMappedStorages = async (
+  dataSourceId: string,
+  params: MappedStorageSearchParams
+): Promise<MappedStoragePageResponse> => {
+  const qs = new URLSearchParams();
+  if (params.startDate) qs.append("startDate", params.startDate);
+  if (params.endDate) qs.append("endDate", params.endDate);
+  params.processingStatus?.forEach((s) => qs.append("processingStatus", s));
+  if (params.transactionId) qs.append("transactionId", params.transactionId);
+  if (params.custNo) qs.append("custNo", params.custNo);
+  params.jsonFilters?.forEach((f) => qs.append("jsonFilters", f));
+  if (params.page !== undefined) qs.append("page", String(params.page));
+  if (params.size !== undefined) qs.append("size", String(params.size));
+  const response = await api.get<MappedStoragePageResponse>(
+    `/api/v1/data-sources/${dataSourceId}/mapped-storages?${qs}`
+  );
+  return response.data;
+};
+
+export const fetchMappedStorageWithOrigin = async (
+  mappedStorageId: number
+): Promise<MappedStorageDetailWithOrigin> => {
+  const response = await api.get<MappedStorageDetailWithOrigin>(
+    `/api/v1/data-sources/mapped-storages/${mappedStorageId}/with-origin`
+  );
+  return response.data;
 };

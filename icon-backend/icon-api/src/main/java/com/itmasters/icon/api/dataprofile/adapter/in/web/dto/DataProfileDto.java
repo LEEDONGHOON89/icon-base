@@ -38,6 +38,8 @@ public class DataProfileDto {
         private String entityType;
         private String entityIdField;
         private java.util.List<String> storeFields;
+        // [2026-04-23] event_stream 타임스탬프 필드명 추가
+        private String timestampKey;
 
         public static Response from(ProfileEntity profile) {
             return Response.builder()
@@ -58,6 +60,8 @@ public class DataProfileDto {
                     .entityType(profile.getEntityType() != null ? profile.getEntityType().name() : null)
                     .entityIdField(profile.getEntityIdField())
                     .storeFields(profile.getStoreFields())
+                    // [2026-04-23] timestampKey 추가
+                    .timestampKey(profile.getTimestampKey())
                     .build();
         }
     }
@@ -81,16 +85,18 @@ public class DataProfileDto {
         private String entityType;
         private String entityIdField;
         private java.util.List<String> storeFields;
-        
+        // [2026-04-23] event_stream 타임스탬프 필드명 추가
+        private String timestampKey;
+
         public ProfilePurpose getProfilePurposeEnum() {
             // profilePurpose가 없으면 null 반환 (선택사항)
             return profilePurpose != null ? ProfilePurpose.valueOf(profilePurpose) : null;
         }
-        
+
         public int getDisplayOrderValue() {
             return displayOrder != null ? displayOrder : 0;
         }
-        
+
         public GroupKeyType getGroupKeyTypeEnum() {
             if (detectKeyType == null || detectKeyType.isEmpty()) {
                 // detectKey가 있으면 자동 유형 추론
@@ -102,7 +108,7 @@ public class DataProfileDto {
             return GroupKeyType.valueOf(detectKeyType);
         }
     }
-    
+
     /**
      * 프로파일 수정 요청 DTO
      */
@@ -121,6 +127,8 @@ public class DataProfileDto {
         private String entityType;
         private String entityIdField;
         private java.util.List<String> storeFields;
+        // [2026-04-23] event_stream 타임스탬프 필드명 추가 (EVENT_STREAM destination 시 필수)
+        private String timestampKey;
         
         public ProfilePurpose getProfilePurposeEnum() {
             // profilePurpose가 없으면 null 반환 (선택사항)

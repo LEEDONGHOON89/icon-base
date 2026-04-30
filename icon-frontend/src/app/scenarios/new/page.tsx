@@ -11,9 +11,15 @@ export default function NewScenarioPage() {
 
   // 폼 제출 핸들러
   const handleSubmit = async (data: ScenarioFormData) => {
+    // [2026-04-24] primaryEntityType 등 누락 필드 추가 — 미전달 시 DB NOT NULL 제약 위반 오류 발생
     const request: CreateScenarioRequest = {
       scenarioName: data.scenarioName,
       description: data.description,
+      riskLevelId: data.riskLevelId || undefined,
+      detectionAreaId: data.detectionAreaId || undefined,
+      primaryEntityType: data.primaryEntityType || undefined,
+      entityFilterJson: data.entityFilterJson || undefined,
+      dedupMinutes: (data.dedupMinutes != null && !isNaN(data.dedupMinutes)) ? data.dedupMinutes : 0,
       rules: data.rules.map((rule) => ({
         ruleId: rule.ruleId,
         orderNo: rule.orderNo,

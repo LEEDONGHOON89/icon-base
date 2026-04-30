@@ -45,6 +45,7 @@ interface OriginalSchemaViewProps {
 }
 
 // Sortable Row Component
+// [2026-04-20] 파서는 데이터소스 레벨로 이동 — 필드단 파서 관련 props 제거
 function SortableRow({
   schema,
   editingSchemas,
@@ -662,12 +663,12 @@ export default function OriginalSchemaView({
       const originalSchema = schemas.find(s => s.schemaId === schema.schemaId);
       const editData = editingSchemas[schema.schemaId];
       
-      // 표준 필드 매핑이나 변환 규칙이 변경되었는지 확인
+      // 표준 필드 매핑, 변환 규칙 변경 여부 확인
       const hasStandardFieldChange = editData && (
-        editData.standardFieldId !== undefined || 
+        editData.standardFieldId !== undefined ||
         editData.transformRule !== undefined
       );
-      
+
       if (hasStandardFieldChange) {
         mappingChanges.push({
           schemaId: schema.schemaId,

@@ -8,6 +8,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.*;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 
 /**
@@ -55,38 +58,84 @@ public class DatabaseService {
         String jdbcUrl = buildJdbcUrl(config);
         loadDriver(jdbcUrl);
 
-        log.info("[{}] DATABASE 직접 폴링 시작 - incrementalColumn={}, lastValue={}",
-                dataSourceId, config.getIncrementalColumn(), config.getLastProcessedValue());
+        // [2026-04-21] 첫 수집(lastProcessedValue=null)이면 사용자 설정 초기값을 우선 사용
+        String effectiveLastValue = config.getLastProcessedValue();
+        if (effectiveLastValue == null && config.getIncrementalColumnInitialValue() != null
+                && !config.getIncrementalColumnInitialValue().isBlank()) {
+            effectiveLastValue = config.getIncrementalColumnInitialValue();
+            log.info("[{}] 첫 수집 — 사용자 설정 초기값 사용: incrementalColumnInitialValue={}",
+                    dataSourceId, effectiveLastValue);
+        }
+
+        // [2026-04-22] 보조 증분 컬럼 유효 하이워터마크
+        boolean hasSecondary = config.getSecondaryIncrementalColumn() != null
+                && !config.getSecondaryIncrementalColumn().isBlank();
+        String effectiveSecondaryLastValue = hasSecondary ? config.getLastSecondaryProcessedValue() : null;
+        if (hasSecondary && effectiveSecondaryLastValue == null
+                && config.getSecondaryIncrementalColumnInitialValue() != null
+                && !config.getSecondaryIncrementalColumnInitialValue().isBlank()) {
+            effectiveSecondaryLastValue = config.getSecondaryIncrementalColumnInitialValue();
+            log.info("[{}] 첫 수집 — 보조 컬럼 초기값 사용: secondaryIncrementalColumnInitialValue={}",
+                    dataSourceId, effectiveSecondaryLastValue);
+        }
+
+        log.info("[{}] DATABASE 직접 폴링 시작 - incrementalColumn={}, lastValue={}, secondaryColumn={}, secondaryLastValue={}",
+                dataSourceId, config.getIncrementalColumn(), effectiveLastValue,
+                config.getSecondaryIncrementalColumn(), effectiveSecondaryLastValue);
+
+        // [2026-04-22] maxLinesPerPoll / maxRecordBytes 백엔드 직접 수집에도 적용
+        int maxLines = (config.getMaxLinesPerPoll() != null && config.getMaxLinesPerPoll() > 0)
+                       ? config.getMaxLinesPerPoll() : 0; // 0 = batchSize 기준
+        int maxBytes = (config.getMaxRecordBytes()  != null && config.getMaxRecordBytes()  > 0)
+                       ? config.getMaxRecordBytes()  : 0; // 0 = 제한 없음
 
         List<Map<String, Object>> records = new ArrayList<>();
-        String newLastValue = config.getLastProcessedValue();
+        String newLastValue = effectiveLastValue;
+        String newLastSecondaryValue = effectiveSecondaryLastValue;
 
         try (Connection conn = DriverManager.getConnection(
                 jdbcUrl, config.getUsername(), config.getPasswordEncrypted());
              PreparedStatement ps = conn.prepareStatement(query)) {
 
-            // incrementalColumn 기반 하이워터마크 바인딩
-            bindIncrementalParam(ps, 1, config.getLastProcessedValue(), config.getIncrementalColumnType());
+            // [2026-04-21] effectiveLastValue 사용 (초기값 또는 하이워터마크)
+            bindIncrementalParam(ps, 1, effectiveLastValue, config.getIncrementalColumnType());
+            // [2026-04-22] 보조 증분 컬럼이 설정된 경우 두 번째 파라미터 바인딩
+            if (hasSecondary) {
+                bindIncrementalParam(ps, 2, effectiveSecondaryLastValue, config.getSecondaryIncrementalColumnType());
+            }
 
+            // [2026-04-22] SQL 레벨 행 수 제한: maxLinesPerPoll 우선, 없으면 batchSize
             int batchSize = config.getBatchSize() != null && config.getBatchSize() > 0
                     ? config.getBatchSize() : 1000;
-            ps.setMaxRows(batchSize);
+            ps.setMaxRows(maxLines > 0 ? maxLines : batchSize);
 
             ResultSet rs = ps.executeQuery();
             ResultSetMetaData meta = rs.getMetaData();
             int cols = meta.getColumnCount();
 
-            while (rs.next()) {
+            // [2026-04-22] maxLinesPerPoll 자바 레벨 루프 제한 (setMaxRows 보완)
+            while (rs.next() && (maxLines <= 0 || records.size() < maxLines)) {
                 Map<String, Object> row = new LinkedHashMap<>();
                 for (int i = 1; i <= cols; i++) {
                     row.put(meta.getColumnLabel(i), rs.getObject(i));
                 }
+
+                // [2026-04-22] maxRecordBytes: 행 크기 추정 후 초과 시 문자열 값 잘라내기
+                if (maxBytes > 0) {
+                    truncateRowIfNeeded(row, maxBytes, dataSourceId);
+                }
+
                 records.add(row);
 
                 // 하이워터마크 갱신
                 if (config.getIncrementalColumn() != null) {
                     String val = rs.getString(config.getIncrementalColumn());
                     if (val != null) newLastValue = val;
+                }
+                // [2026-04-22] 보조 컬럼 하이워터마크 갱신
+                if (hasSecondary) {
+                    String secVal = rs.getString(config.getSecondaryIncrementalColumn());
+                    if (secVal != null) newLastSecondaryValue = secVal;
                 }
             }
             rs.close();
@@ -99,9 +148,11 @@ public class DatabaseService {
             throw new RuntimeException("DATABASE 폴링 실패: " + e.getMessage(), e);
         }
 
-        // 하이워터마크 변경 시 DB 갱신
-        if (!records.isEmpty() && !Objects.equals(newLastValue, config.getLastProcessedValue())) {
-            config.updateLastProcessedValue(newLastValue);
+        // [2026-04-22] 하이워터마크 변경 시 DB 갱신 — 보조 컬럼 포함
+        boolean primaryChanged = !Objects.equals(newLastValue, config.getLastProcessedValue());
+        boolean secondaryChanged = hasSecondary && !Objects.equals(newLastSecondaryValue, config.getLastSecondaryProcessedValue());
+        if (!records.isEmpty() && (primaryChanged || secondaryChanged)) {
+            config.updateLastProcessedValues(newLastValue, hasSecondary ? newLastSecondaryValue : config.getLastSecondaryProcessedValue());
             databaseConfigRepository.save(config);
         }
 
@@ -141,16 +192,55 @@ public class DatabaseService {
     }
 
     /**
-     * incrementalColumnType에 따라 PreparedStatement 파라미터 바인딩.
+     * [2026-04-21] incrementalColumnType에 따라 PreparedStatement 파라미터 바인딩.
      * icon-agent JdbcCollector.bindParameter()와 동일한 방식.
+     *
+     * 수정 내용:
+     *  - null(초회 수집) 처리: SQL NULL 대신 타입별 sentinel 값 사용
+     *    · TIMESTAMP/DATETIME → 1970-01-01 00:00:00 (에포크) → 전체 레코드 수집
+     *    · NUMBER             → 0L                           → 전체 레코드 수집
+     *    · STRING             → ""                           → 전체 레코드 수집
+     *    (기존: setNull(Types.VARCHAR) → timestamp > character varying 타입 불일치 오류)
+     *    (이전 수정: setNull(Types.TIMESTAMP) → 타입 오류는 해결되나 NULL 비교로 0건 수집)
+     *  - TIMESTAMP 파싱 실패 fallback을 setString → setTimestamp(에포크)로 변경
+     *  - ISO 8601, 날짜만 있는 형식 등 다양한 포맷 지원
      */
+    private static final List<DateTimeFormatter> TIMESTAMP_FORMATTERS = List.of(
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"),
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"),
+            DateTimeFormatter.ISO_LOCAL_DATE_TIME,           // yyyy-MM-ddTHH:mm:ss
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"),
+            DateTimeFormatter.ofPattern("yyyy-MM-dd")
+    );
+
+    /** 초회 수집 시 TIMESTAMP 타입의 하이워터마크 시작 기준값 (에포크: 1970-01-01 00:00:00) */
+    private static final Timestamp EPOCH_TIMESTAMP = Timestamp.valueOf("1970-01-01 00:00:00");
+
     private void bindIncrementalParam(PreparedStatement ps, int idx, String value, String type)
             throws SQLException {
+        // [2026-04-21] type이 null인 경우 값 형태로 자동 추론
+        //              incremental_column_type 이 DB에 NULL로 저장된 레코드 대응
+        String t = resolveColumnType(type, value);
+
+        // [2026-04-21] null = 초회 수집: SQL NULL 대신 sentinel 값으로 전체 레코드 수집
         if (value == null) {
-            ps.setNull(idx, Types.VARCHAR);
+            switch (t) {
+                case "NUMBER":
+                    log.debug("[bindIncrementalParam] 초회 수집 — NUMBER sentinel: 0");
+                    ps.setLong(idx, 0L);
+                    break;
+                case "DATETIME":
+                case "TIMESTAMP":
+                    log.debug("[bindIncrementalParam] 초회 수집 — TIMESTAMP sentinel: 1970-01-01 00:00:00");
+                    ps.setTimestamp(idx, EPOCH_TIMESTAMP);
+                    break;
+                default:
+                    log.debug("[bindIncrementalParam] 초회 수집 — STRING sentinel: ''");
+                    ps.setString(idx, "");
+            }
             return;
         }
-        String t = type != null ? type.toUpperCase() : "STRING";
+
         switch (t) {
             case "NUMBER":
                 try {
@@ -162,15 +252,92 @@ public class DatabaseService {
                 break;
             case "DATETIME":
             case "TIMESTAMP":
-                try {
-                    ps.setTimestamp(idx, Timestamp.valueOf(value));
-                } catch (IllegalArgumentException e) {
-                    log.warn("TIMESTAMP 파싱 실패, 문자열로 바인딩: {}", value);
-                    ps.setString(idx, value);
+                // [2026-04-21] 다양한 날짜 포맷 순서대로 시도; 모두 실패 시 에포크 타임스탬프 사용
+                Timestamp ts = parseTimestamp(value);
+                if (ts != null) {
+                    ps.setTimestamp(idx, ts);
+                } else {
+                    log.warn("[bindIncrementalParam] TIMESTAMP 파싱 실패 — 에포크로 fallback: value='{}'", value);
+                    ps.setTimestamp(idx, EPOCH_TIMESTAMP);
                 }
                 break;
             default:
                 ps.setString(idx, value);
+        }
+    }
+
+    /**
+     * [2026-04-21] incrementalColumnType 자동 추론.
+     * DB에 incremental_column_type 이 NULL로 저장된 경우에도 값 형태를 보고 적절한 타입으로 바인딩한다.
+     * - 값이 타임스탬프 패턴이면 "TIMESTAMP"
+     * - 값이 순수 숫자이면 "NUMBER"
+     * - 그 외 "STRING"
+     */
+    private String resolveColumnType(String type, String value) {
+        if (type != null && !type.isBlank()) {
+            return type.toUpperCase();
+        }
+        if (value == null) return "STRING";
+        // 숫자 판별
+        try { Long.parseLong(value); return "NUMBER"; } catch (NumberFormatException ignored) {}
+        // 타임스탬프 판별
+        if (parseTimestamp(value) != null) return "TIMESTAMP";
+        return "STRING";
+    }
+
+    /**
+     * [2026-04-21] 여러 날짜 포맷을 순서대로 시도하여 Timestamp 변환.
+     * 변환 가능한 포맷이 없으면 null 반환.
+     */
+    private Timestamp parseTimestamp(String value) {
+        // 1) java.sql.Timestamp.valueOf() — "yyyy-MM-dd HH:mm:ss[.nnnnnnnnn]"
+        try {
+            return Timestamp.valueOf(value);
+        } catch (IllegalArgumentException ignored) {
+            // fall through
+        }
+        // 2) DateTimeFormatter 목록 순서대로 시도
+        for (DateTimeFormatter fmt : TIMESTAMP_FORMATTERS) {
+            try {
+                LocalDateTime ldt = LocalDateTime.parse(value, fmt);
+                return Timestamp.valueOf(ldt);
+            } catch (DateTimeParseException ignored) {
+                // try next
+            }
+        }
+        return null;
+    }
+
+    /**
+     * [2026-04-22] 행의 총 바이트 크기가 maxBytes를 초과하면 각 문자열 값을 비율대로 잘라내고
+     * [TRUNCATED] 마커를 추가한다. 숫자/날짜 등 비문자열 값은 변경하지 않는다.
+     * icon-agent JdbcCollector.truncateIfNeeded()와 동일한 방식.
+     */
+    private void truncateRowIfNeeded(Map<String, Object> row, int maxBytes, String dataSourceId) {
+        // 행 전체 직렬화 크기 추정
+        String rowStr = row.toString();
+        byte[] rowBytes = rowStr.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (rowBytes.length <= maxBytes) return;
+
+        log.warn("[{}] DATABASE 레코드 크기 초과 — 잘라냄: {} bytes > {} bytes 제한",
+                dataSourceId, rowBytes.length, maxBytes);
+
+        // 문자열 값만 잘라내기 (비율 기준: maxBytes / 컬럼 수)
+        int stringColCount = (int) row.values().stream()
+                .filter(v -> v instanceof String).count();
+        if (stringColCount == 0) return;
+
+        int bytesPerCol = Math.max(64, maxBytes / stringColCount);
+        for (Map.Entry<String, Object> entry : row.entrySet()) {
+            if (!(entry.getValue() instanceof String)) continue;
+            String val = (String) entry.getValue();
+            byte[] valBytes = val.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            if (valBytes.length > bytesPerCol) {
+                int approxChars = (int) ((long) bytesPerCol * val.length() / valBytes.length) - 20;
+                approxChars = Math.max(0, approxChars);
+                entry.setValue(val.substring(0, approxChars)
+                        + String.format("...[TRUNCATED: %d→%d bytes]", valBytes.length, bytesPerCol));
+            }
         }
     }
 

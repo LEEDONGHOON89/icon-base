@@ -18,10 +18,17 @@ targets:
     ackTimeoutMs: 30000
     compress: false
   collectors:[]
+  # [2026-04-22] 배치 설정 — 튜닝 가이드 기본값 적용
+  # maxBatchSize    : 배치당 최대 레코드 수 (건수 기준 플러시)
+  # maxBatchMs      : 배치 최대 대기 시간 ms (시간 기준 플러시)
+  # maxBatchBytes   : 배치당 최대 바이트 크기 (0=제한없음, 크기 기준 플러시)
+  # maxBatchesPerSecond : 초당 최대 배치 전송 수 (0=무제한, 서버 부하 조절)
+  # queueCapacity   : 대상별 인메모리 레코드 큐 크기
   queueCapacity: 10000
-  maxBatchSize: 102
-  maxBatchMs: 550
-  maxBatchBytes: 0
+  maxBatchSize: 500
+  maxBatchMs: 5000
+  maxBatchBytes: 524288
+  maxBatchesPerSecond: 10
 monitoring:
   enabled: true
   intervalMs: 30000

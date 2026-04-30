@@ -4,10 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+// [2026-04-21] TlsConfig, CollectorConfig import 제거 — 관련 메서드 삭제됨
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.UUID;
 
 /**
  * Loads and saves agent configuration from/to a YAML file using Jackson.
@@ -15,27 +18,56 @@ import java.nio.file.Path;
 public class ConfigManager {
 
     private static final Logger log = LoggerFactory.getLogger(ConfigManager.class);
-    private static final ObjectMapper YAML_MAPPER = new ObjectMapper(new YAMLFactory());
+    private static final ObjectMapper YAML_MAPPER = new ObjectMapper(new YAMLFactory()); // config.yaml 로드 전용
 
-    private final String configFilePath;
     private final AgentConfig config;
 
     public ConfigManager(String configFilePath) throws IOException {
-        this.configFilePath = configFilePath;
         Path path = Path.of(configFilePath);
         if (!Files.exists(path)) {
             throw new IOException("Config file not found: " + configFilePath);
         }
         log.info("Loading configuration from: {}", path.toAbsolutePath());
         this.config = YAML_MAPPER.readValue(path.toFile(), AgentConfig.class);
+        // [2026-04-21] config.yaml에 agentId 없으면 data/agent.id에서 읽거나 신규 생성
+        resolveAgentId();
         validate();
-        log.info("Configuration loaded: {} target(s) configured", config.getTargets().size());
+        // [2026-04-21] targets는 data/targets.json에서 관리 — config.yaml에서 제외됨
+        log.info("Configuration loaded: agentId={}", config.getAgentId());
+    }
+
+    /**
+     * [2026-04-21] agentId 결정 우선순위:
+     *   1) config.yaml agentId 명시 → 그대로 사용
+     *   2) data/agent.id 파일 존재 → 영속화된 ID 재사용 (재기동 시 동일 ID 보장)
+     *   3) 둘 다 없음 → "agent-{12자리 hex}" UUID 생성 후 data/agent.id에 저장
+     *
+     * data/agent.id 분실 시 새 ID가 생성되므로 서버에서 신규 에이전트로 등록됨.
+     */
+    private void resolveAgentId() throws IOException {
+        if (config.getAgentId() != null && !config.getAgentId().isBlank()) {
+            log.info("AgentId: {} (config.yaml 명시)", config.getAgentId());
+            return;
+        }
+        Path idFile = Path.of("data", "agent.id");
+        if (Files.exists(idFile)) {
+            String persisted = Files.readString(idFile, StandardCharsets.UTF_8).strip();
+            if (!persisted.isBlank()) {
+                config.setAgentId(persisted);
+                log.info("AgentId: {} (data/agent.id 재사용)", persisted);
+                return;
+            }
+        }
+        String newId = "agent-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        Files.createDirectories(idFile.getParent());
+        Files.writeString(idFile, newId, StandardCharsets.UTF_8);
+        config.setAgentId(newId);
+        log.info("AgentId: {} (신규 생성 — data/agent.id 저장)", newId);
     }
 
     private void validate() {
-        if (config.getTargets() == null || config.getTargets().isEmpty()) {
-            throw new IllegalArgumentException("No targets configured in config file");
-        }
+        // [2026-04-21] targets는 선택 사항 — CLI로 런타임 추가 가능
+        if (config.getTargets() == null || config.getTargets().isEmpty()) return;
         for (TargetConfig t : config.getTargets()) {
             if (t.getId() == null || t.getId().isBlank()) {
                 throw new IllegalArgumentException("Each target must have a non-empty id");
@@ -50,66 +82,8 @@ public class ConfigManager {
         return config;
     }
 
-    /**
-     * Updates RPC and batch settings for the given target and writes config to file.
-     * Called when CONFIG_UPDATE is received from the server.
-     */
-    public void updateTargetRpcAndSave(String targetId,
-                                       String rpcEndpoint,
-                                       boolean compress,
-                                       String tlsKeystorePath,
-                                       String tlsKeystorePassword,
-                                       String tlsTruststorePath,
-                                       String tlsTruststorePassword,
-                                       int queueCapacity,
-                                       int maxBatchSize,
-                                       long maxBatchMs,
-                                       long maxBatchBytes) throws IOException {
-        TargetConfig target = config.getTargets().stream()
-                .filter(t -> targetId.equals(t.getId()))
-                .findFirst()
-                .orElse(null);
-        if (target == null) {
-            log.warn("CONFIG_UPDATE: target not found in config, targetId={}", targetId);
-            return;
-        }
-        // rpcEndpoint is not updated by CONFIG_UPDATE (immutable)
-        target.getRpc().setCompress(compress);
-        if (target.getRpc().getTls() == null) {
-            target.getRpc().setTls(new TlsConfig());
-        }
-        TlsConfig tls = target.getRpc().getTls();
-        if (tlsKeystorePath != null) tls.setKeystorePath(tlsKeystorePath.isEmpty() ? null : tlsKeystorePath);
-        if (tlsKeystorePassword != null) tls.setKeystorePassword(tlsKeystorePassword.isEmpty() ? null : tlsKeystorePassword);
-        if (tlsTruststorePath != null) tls.setTruststorePath(tlsTruststorePath.isEmpty() ? null : tlsTruststorePath);
-        if (tlsTruststorePassword != null) tls.setTruststorePassword(tlsTruststorePassword.isEmpty() ? null : tlsTruststorePassword);
-        target.setQueueCapacity(queueCapacity > 0 ? queueCapacity : target.getQueueCapacity());
-        target.setMaxBatchSize(maxBatchSize > 0 ? maxBatchSize : target.getMaxBatchSize());
-        target.setMaxBatchMs(maxBatchMs > 0 ? maxBatchMs : target.getMaxBatchMs());
-        target.setMaxBatchBytes(maxBatchBytes >= 0 ? maxBatchBytes : target.getMaxBatchBytes());
-
-        Path path = Path.of(configFilePath);
-        YAML_MAPPER.writeValue(path.toFile(), config);
-        log.info("[{}] config.yaml updated with CONFIG_UPDATE (endpoint={}, maxBatchSize={})",
-                targetId, rpcEndpoint, maxBatchSize);
-    }
-
-    /**
-     * Replaces collectors for the given target and writes config to file.
-     * Called when COLLECTORS_SYNC is received from the server.
-     */
-    public void applyCollectorsAndSave(String targetId, java.util.List<CollectorConfig> collectors) throws IOException {
-        TargetConfig target = config.getTargets().stream()
-                .filter(t -> targetId.equals(t.getId()))
-                .findFirst()
-                .orElse(null);
-        if (target == null) {
-            log.warn("COLLECTORS_SYNC: target not found in config, targetId={}", targetId);
-            return;
-        }
-        target.setCollectors(collectors != null ? collectors : new java.util.ArrayList<>());
-        Path path = Path.of(configFilePath);
-        YAML_MAPPER.writeValue(path.toFile(), config);
-        log.info("[{}] config.yaml updated with COLLECTORS_SYNC (collectors={})", targetId, collectors != null ? collectors.size() : 0);
-    }
+    // [2026-04-21] updateTargetRpcAndSave(), applyCollectorsAndSave() 제거
+    //              targets는 data/targets.json에서 관리 (TargetStore), config.yaml 저장 불필요
+    //              CONFIG_UPDATE → TargetContext.applyConfigUpdate() + TargetStore.save()
+    //              COLLECTORS_SYNC → TargetContext.applyCollectorsSync() (서버 재연결 시 복원)
 }

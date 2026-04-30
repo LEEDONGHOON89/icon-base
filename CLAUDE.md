@@ -2,6 +2,12 @@
 
 ---
 
+## 작업 저장소 규칙
+
+**모든 작업은 메인 저장소(`D:\sources\icon-base`)에서 직접 수행한다. worktree에서 작업하지 않는다.**
+
+---
+
 ## 아키텍처 문서 (작업 전 참조)
 
 icon 관련 기능 추가·수정 작업 시 아래 문서를 먼저 읽어 컨텍스트를 파악한다.
@@ -94,6 +100,33 @@ dto/                     → 요청/응답 DTO
 
 ---
 
+## 작업 이력 및 TODO 관리 규칙
+
+작업 완료 후 반드시 아래 파일들을 업데이트한다.
+
+### 작업 이력 (`docs/work_list/`)
+
+| 시점 | 대상 파일 | 작업 내용 |
+|---|---|---|
+| 작업 완료 후 | `docs/work_list/YYYY-MM-DD_작업내용요약.md` (신규 생성) | 변경 파일 목록, 변경 이유, 주요 내용 상세 기록 |
+| 작업 완료 후 | `docs/work_list/INDEX.md` | 위 파일 행 추가 (작업일 / 파일명 / 작업 내용 요약) |
+
+**작업이력 파일 형식**: `YYYY-MM-DD_작업내용요약.md`  
+**INDEX.md 위치**: `docs/work_list/INDEX.md` — 전체 이력 목록 관리
+
+### TODO 목록 (`docs/todo_list/TODO.md`)
+
+| 시점 | 작업 |
+|---|---|
+| 새 작업 항목 발생 시 | `TODO.md` TODO 목록에 행 추가 (번호 순번 부여, 상태 🔲, 상세 파일 있으면 링크) |
+| TODO 항목 완료 시 | 해당 행 상태를 ✅로 변경 후 "완료 항목" 표로 이동, 완료일 기재 |
+| TODO 항목 보류 시 | 상태를 ⏸로 변경 |
+
+**번호 규칙**: 순번 부여, 삭제해도 번호 재사용 금지  
+**TODO.md 위치**: `docs/todo_list/TODO.md`
+
+---
+
 ## 코드 주석 규칙
 
 코드를 수정하거나 추가할 때는 반드시 변경 내용에 주석을 달아야 한다.
@@ -108,6 +141,63 @@ dto/                     → 요청/응답 DTO
 - 날짜는 `[YYYY-MM-DD]` 형식을 사용한다.
 - 주석은 변경된 코드 바로 위에 위치한다.
 - 언어에 맞는 주석 문법을 사용한다 (Java/JS: `//`, XML: `<!-- -->`, Properties: `#`).
+
+---
+
+## Git 브런치 규칙
+
+> **이 규칙은 절대 예외 없이 반드시 준수한다.**
+
+### 브런치 전략
+
+| 브런치 | 용도 | push 가능 여부 |
+|---|---|---|
+| `leedh` | 작업 브런치 — 모든 개발·수정 작업 | ✅ 항상 허용 |
+| `main` | 배포 브런치 — 머지 요청 시에만 변경 | ❌ 직접 push 절대 금지 |
+
+### 일반 작업 규칙
+
+- 모든 작업은 `leedh` 브런치에서 수행하고 `leedh`에만 push한다
+- push 전 반드시 현재 브런치가 `leedh`인지 확인한다
+
+```bash
+# push 전 브런치 확인
+git branch --show-current   # 반드시 leedh 출력 확인
+
+# push 실행
+git push origin leedh
+```
+
+### main 브런치 머지 규칙
+
+- **사용자가 명시적으로 머지 요청을 한 경우에만** `leedh → main` 머지를 진행한다
+- 머지 절차:
+```bash
+# 1. leedh 최신 상태 확인
+git checkout leedh
+git status
+
+# 2. main 브런치로 전환
+git checkout main
+
+# 3. leedh → main 머지
+git merge leedh --no-ff -m "Merge branch 'leedh' into main"
+
+# 4. main push
+git push origin main
+
+# 5. 작업 브런치로 복귀
+git checkout leedh
+```
+
+### 절대 실행 금지
+
+```bash
+# 머지 요청 없이 아래 명령은 절대 실행하지 않는다
+git push origin main
+git push --force origin main
+git push -f origin main
+```
 
 ---
 

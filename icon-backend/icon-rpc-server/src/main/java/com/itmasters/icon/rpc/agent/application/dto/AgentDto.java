@@ -71,10 +71,12 @@ public class AgentDto {
         private String tlsKeystorePassword;
         private String tlsTruststorePath;
         private String tlsTruststorePassword;
-        private int    queueCapacity  = 10000;
-        private int    maxBatchSize   = 500;
-        private long   maxBatchMs     = 2000;
-        private long   maxBatchBytes  = 1048576;
+        private int    queueCapacity       = 10000;
+        private int    maxBatchSize        = 500;
+        private long   maxBatchMs          = 5000;
+        private long   maxBatchBytes       = 524288;
+        // [2026-04-22] 초당 최대 배치 전송 수 (0 = 무제한)
+        private int    maxBatchesPerSecond = 10;
     }
 
     @Getter

@@ -15,7 +15,9 @@ import {
   type EntityTypeMetadata,
 } from "./api";
 import { fetchActiveDetectionAreas, type DetectionArea } from "@/app/domain-settings/api";
-import { fetchAggregates, type AggregateDef, labelAggregateOperator } from "@/app/detections/api";
+// [2026-04-24] fetchAggregates(/api/v1/sensors)가 센서를 반환해 룰 목록이 비었던 버그 수정 → fetchActiveRules(/api/v1/rules/active) 로 교체
+import { labelAggregateOperator } from "@/app/detections/api";
+import { fetchActiveRules, type Rule } from "@/app/rules/api";
 
 import { formatMinutes } from "@/utils/timeFormat";
 import { useErrorHandling } from "@/hooks/useErrorHandling";
@@ -63,29 +65,35 @@ export default function ScenarioForm({
   const [isSavingRules, setIsSavingRules] = useState(false);
   const [ruleFilter, setRuleFilter] = useState("");
   const [entityFilters, setEntityFilters] = useState<EntityFilterCondition[]>([]);
+  // [2026-04-24] 시나리오 재조회(staleTime=0) 시 폼 초기화 방지 — 마지막으로 초기화한 scenarioId 추적
+  const [lastInitializedScenarioId, setLastInitializedScenarioId] = useState<string | null>(null);
 
-  // 사용 가능한 룰 목록 조회 (활성화된 룰만, 페이지네이션 없이 전체)
+  // [2026-04-24] /api/v1/rules/active 에서 활성화된 룰 목록 조회
   const { data: availableAggregates = [], isLoading: aggregatesLoading } = useQuery({
-    queryKey: ["aggregates", "all"],
-    queryFn: fetchAggregates,
+    queryKey: ["rules", "active"],
+    queryFn: async () => {
+      const res = await fetchActiveRules();
+      return res.data || [];
+    },
   });
 
   // 위험 레벨 메타데이터 조회
-  const { data: riskLevels = [] } = useQuery({
+  // [2026-04-24] isSuccess 추가 — 데이터가 0건이어도 쿼리 완료 여부로 판단
+  const { data: riskLevels = [], isSuccess: riskLevelsReady } = useQuery({
     queryKey: ["metadata", "riskLevels"],
     queryFn: fetchRiskLevels,
     staleTime: 5 * 60 * 1000, // 5분간 캐시
   });
 
   // 엔티티 타입 메타데이터 조회
-  const { data: entityTypes = [] } = useQuery({
+  const { data: entityTypes = [], isSuccess: entityTypesReady } = useQuery({
     queryKey: ["metadata", "entityTypes"],
     queryFn: fetchEntityTypes,
     staleTime: 5 * 60 * 1000, // 5분간 캐시
   });
 
   // 탐지 영역 조회
-  const { data: detectionAreas = [] } = useQuery({
+  const { data: detectionAreas = [], isSuccess: detectionAreasReady } = useQuery({
     queryKey: ["detectionAreas", "active"],
     queryFn: fetchActiveDetectionAreas,
     staleTime: 5 * 60 * 1000, // 5분간 캐시
@@ -130,13 +138,19 @@ export default function ScenarioForm({
     },
   });
 
-  // 메타데이터 로딩 상태 확인
-  const isMetadataLoaded = riskLevels.length > 0 && entityTypes.length > 0 && detectionAreas.length > 0;
+  // [2026-04-24] 메타데이터 로딩 상태 확인 — length > 0 → isSuccess 로 변경
+  // 이전 조건(length > 0)은 탐지영역 등 데이터가 0건이면 영원히 false가 되어 폼 초기화 불가 버그 존재
+  // isSuccess: 쿼리가 정상 완료되면 true (빈 배열이어도 OK)
+  const isMetadataLoaded = riskLevelsReady && entityTypesReady && detectionAreasReady;
 
   // 시나리오 데이터 로드 시 폼 초기화 (수정 모드)
-  // 메타데이터가 모두 로드된 후에만 reset 호출 (select option이 렌더링된 후 값 설정)
+  // [2026-04-24] isMetadataLoaded = isSuccess 기준으로 변경 — 빈 배열이어도 쿼리 완료 시 reset 실행
+  // [2026-04-24] lastInitializedScenarioId 추가 — 동일 시나리오 재조회(staleTime=0) 시 폼/entityFilters 초기화 방지
+  //              staleTime=0 이면 윈도우 포커스 복귀마다 scenario 객체 참조가 바뀌어 useEffect가 재실행되므로
+  //              scenarioId가 바뀔 때만 초기화하도록 guard 추가
   useEffect(() => {
-    if (scenario && isMetadataLoaded) {
+    if (scenario && isMetadataLoaded && scenario.scenarioId !== lastInitializedScenarioId) {
+      setLastInitializedScenarioId(scenario.scenarioId);
       console.log("🔍 [ScenarioForm] Initializing form with scenario (metadata loaded):", {
         scenarioId: scenario.scenarioId,
         riskLevelId: scenario.riskLevelId,
@@ -187,7 +201,8 @@ export default function ScenarioForm({
         setEntityFilters([]);
       }
     }
-  }, [scenario, reset, isMetadataLoaded, riskLevels.length, entityTypes.length, detectionAreas.length]);
+  // [2026-04-24] 의존배열: lastInitializedScenarioId 추가 (동일 scenarioId 재초기화 방지)
+  }, [scenario, reset, isMetadataLoaded, lastInitializedScenarioId]);
 
   // entityFilters 변경 시 JSON으로 변환하여 폼에 반영
   useEffect(() => {
@@ -202,7 +217,7 @@ export default function ScenarioForm({
 
 
   // 룰 추가 (사용 가능한 룰에서 선택)
-  const addRule = (agg: AggregateDef) => {
+  const addRule = (agg: Rule) => {
     const currentRules = watch("rules");
 
     // 이미 추가된 룰인지 확인
@@ -221,7 +236,7 @@ export default function ScenarioForm({
     };
 
     setValue("rules", [...currentRules, newRule]);
-    toast.success(`"${agg.sensorName || agg.name}" 룰이 추가되었습니다.`);
+    toast.success(`"${agg.name}" 룰이 추가되었습니다.`);
   };
 
   // 룰 제거
@@ -237,13 +252,11 @@ export default function ScenarioForm({
     setValue("rules", updatedRules);
   };
 
-  // 룰 필터링
-  const aggsArray = Array.isArray(availableAggregates) ? availableAggregates : (availableAggregates as any).data || [];
-  // 비활성 룰 숨김
-  const activeAggs = (aggsArray as AggregateDef[]).filter((a) => a.isActive !== false);
-  const filteredRules = activeAggs.filter((agg: AggregateDef) => {
+  // [2026-04-24] Rule 타입으로 변경, sensorName 필드 제거 (Rule은 name 필드 사용)
+  const aggsArray = Array.isArray(availableAggregates) ? availableAggregates : [];
+  const filteredRules = (aggsArray as Rule[]).filter((agg: Rule) => {
     const searchLower = ruleFilter.toLowerCase();
-    const name = agg.sensorName || agg.name || '';
+    const name = agg.name || '';
     const ruleId = agg.ruleId || '';
     return name.toLowerCase().includes(searchLower) || ruleId.toLowerCase().includes(searchLower);
   });
@@ -252,7 +265,7 @@ export default function ScenarioForm({
   const handleFormSubmit = async (data: ScenarioFormData) => {
 
     // 가용 룰 검증: 존재하지 않는 룰 ID가 포함되면 저장 중단
-    const validIds = new Set((aggsArray as AggregateDef[]).map((a) => a.ruleId));
+    const validIds = new Set((aggsArray as Rule[]).map((a) => a.ruleId));
     const invalid = data.rules.find((r) => !validIds.has(r.ruleId));
     if (invalid) {
       toast.error(`정의되지 않은 룰이 포함되어 저장할 수 없습니다: ${invalid.ruleId}`);
@@ -261,6 +274,11 @@ export default function ScenarioForm({
     if (data.rules.length === 0) {
       toast.error("최소 1개 이상의 룰을 추가해주세요.");
       return;
+    }
+
+    // [2026-04-24] dedupMinutes null/undefined → 0 정규화 (DB NOT NULL 준수)
+    if (data.dedupMinutes == null || isNaN(data.dedupMinutes as number)) {
+      data.dedupMinutes = 0;
     }
 
     setIsSubmitting(true);
@@ -303,8 +321,8 @@ export default function ScenarioForm({
         detectionAreaId: detectionAreaId || undefined,
         primaryEntityType: primaryEntityType || undefined,
         isActive,
-        // 엔진 설정 필드 (NaN 처리)
-        dedupMinutes: dedupMinutes && !isNaN(dedupMinutes) ? dedupMinutes : undefined,
+        // [2026-04-24] 0도 유효값 — falsy 체크 제거, null/NaN이면 0으로 대체 (DB NOT NULL 준수)
+        dedupMinutes: (dedupMinutes != null && !isNaN(dedupMinutes)) ? dedupMinutes : 0,
       });
       toast.success("기본정보가 저장되었습니다.");
     } catch (error) {
@@ -347,7 +365,8 @@ export default function ScenarioForm({
     }
 
     // 가용 룰 검증
-    const validIds = new Set((aggsArray as AggregateDef[]).map((a) => a.ruleId));
+    // [2026-04-24] AggregateDef → Rule 타입으로 교체
+    const validIds = new Set((aggsArray as Rule[]).map((a) => a.ruleId));
     const invalid = rules.find((r) => !validIds.has(r.ruleId));
     if (invalid) {
       toast.error(`정의되지 않은 룰이 포함되어 저장할 수 없습니다: ${invalid.ruleId}`);
@@ -620,24 +639,23 @@ export default function ScenarioForm({
                       render={({ field }) => (
                         <>
                           {field.value.map((rule, index) => {
-                            // 🔍 디버깅: 룰 매칭 확인
+                            // [2026-04-24] AggregateDef → Rule 타입으로 교체, 디버그 로그 유지
                             console.log(`🔍 [ScenarioForm] Rule #${index + 1} lookup:`, {
                               ruleId: rule.ruleId,
                               aggsArrayLength: aggsArray.length,
-                              aggsArrayIds: (aggsArray as AggregateDef[]).map((a: AggregateDef) => a.ruleId),
-                              hasMatchingId: (aggsArray as AggregateDef[]).some((a: AggregateDef) => a.ruleId === rule.ruleId),
+                              aggsArrayIds: (aggsArray as Rule[]).map((a: Rule) => a.ruleId),
+                              hasMatchingId: (aggsArray as Rule[]).some((a: Rule) => a.ruleId === rule.ruleId),
                             });
 
-                            const selectedAgg = (aggsArray as AggregateDef[]).find((a: AggregateDef) => a.ruleId === rule.ruleId);
-                            
-                            // 🔍 디버깅: 매칭 결과 확인
+                            const selectedAgg = (aggsArray as Rule[]).find((a: Rule) => a.ruleId === rule.ruleId);
+
                             console.log(`🔍 [ScenarioForm] Rule #${index + 1} result:`, {
                               ruleId: rule.ruleId,
                               found: !!selectedAgg,
                               selectedAgg: selectedAgg,
                             });
 
-                            const displayName = selectedAgg?.sensorName || selectedAgg?.name || rule.ruleId;
+                            const displayName = selectedAgg?.name || rule.ruleId;
                             const isMissing = !selectedAgg;
                             return (
                               <div key={rule.ruleId} className="relative">
@@ -754,7 +772,7 @@ export default function ScenarioForm({
                     {ruleFilter ? "검색 결과가 없습니다." : "사용 가능한 룰이 없습니다."}
                   </p>
                 ) : (
-                  filteredRules.map((agg: AggregateDef) => {
+                  filteredRules.map((agg: Rule) => {
                     const isAdded = watchedRules.some(
                       (r) => r.ruleId === agg.ruleId
                     );
@@ -771,7 +789,7 @@ export default function ScenarioForm({
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
                             <h4 className="font-semibold text-gray-800 text-sm mb-1">
-                              {agg.sensorName || agg.name}
+                              {agg.name}
                             </h4>
                             <div className="mb-1">
                               <span className="text-xs text-gray-500 font-mono">{agg.ruleId}</span>

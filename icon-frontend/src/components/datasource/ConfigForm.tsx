@@ -30,6 +30,7 @@ export default function ConfigForm({ dataSource }: Props) {
     // [2026-03-12] 에이전트 연결 초기값
     agentId: undefined,
   });
+  // [2026-04-21] incrementalColumnType 기본값 "DATETIME" 명시 — 미설정 시 null로 저장되는 문제 방지
   const [db, setDb] = useState<DatabaseConfig>({
     connectionName: "",
     databaseType: "POSTGRES",
@@ -38,6 +39,7 @@ export default function ConfigForm({ dataSource }: Props) {
     maxPoolSize: 10,
     connectionTimeoutSeconds: 30,
     idleTimeoutSeconds: 300,
+    incrementalColumnType: "DATETIME",
     batchSize: 1000,
   });
 
@@ -66,11 +68,18 @@ export default function ConfigForm({ dataSource }: Props) {
         hasHeader: config.fileSystem.hasHeader ?? !isRealtime,
         skipLines: config.fileSystem.skipLines,
         processingStrategy: config.fileSystem.processingStrategy,
-        scanIntervalMinutes: config.fileSystem.scanIntervalMinutes ?? (isRealtime ? 5 : 60),
         moveProcessedFiles: config.fileSystem.moveProcessedFiles,
         processedFilesDirectory: config.fileSystem.processedFilesDirectory,
         // [2026-03-12] 에이전트 연결 정보 초기 로드
         agentId: config.fileSystem.agentId || undefined,
+        // [2026-04-22] 폴링 간격(초): pollIntervalMs(ms)→초 변환 우선, 없으면 scanIntervalMinutes(초) 사용
+        // FILE_SYSTEM_REALTIME은 통합 폴링 간격(초)을 scanIntervalMinutes에 저장한다.
+        pollIntervalMs: config.fileSystem.pollIntervalMs ?? undefined,
+        scanIntervalMinutes: config.fileSystem.pollIntervalMs
+          ? Math.round(config.fileSystem.pollIntervalMs / 1000)
+          : (config.fileSystem.scanIntervalMinutes ?? (isRealtime ? 60 : 3600)),
+        maxLinesPerPoll: config.fileSystem.maxLinesPerPoll ?? undefined,
+        maxRecordBytes: config.fileSystem.maxRecordBytes ?? undefined,
       });
     }
     if (dataSource.sourceType === "DATABASE" && config.database) {
@@ -90,16 +99,32 @@ export default function ConfigForm({ dataSource }: Props) {
         mainQuery: config.database.mainQuery,
         incrementalColumn: config.database.incrementalColumn,
         incrementalColumnType: config.database.incrementalColumnType,
+        // [2026-04-21] 증분 컬럼 초기값 로드
+        incrementalColumnInitialValue: config.database.incrementalColumnInitialValue,
+        // [2026-04-22] 보조 증분 컬럼 로드
+        secondaryIncrementalColumn: config.database.secondaryIncrementalColumn,
+        secondaryIncrementalColumnType: config.database.secondaryIncrementalColumnType || "NUMBER",
+        secondaryIncrementalColumnInitialValue: config.database.secondaryIncrementalColumnInitialValue,
         batchSize: config.database.batchSize || 1000,
         // [2026-03-13] 에이전트 연결 정보 초기 로드
         agentId: config.database.agentId || undefined,
+        // [2026-04-21] 폴링 설정 초기 로드
+        pollIntervalMs: config.database.pollIntervalMs ?? undefined,
+        maxLinesPerPoll: config.database.maxLinesPerPoll ?? undefined,
+        maxRecordBytes: config.database.maxRecordBytes ?? undefined,
       });
     }
   }, [config, dataSource.sourceType]);
 
   const saveMutation = useMutation({
     mutationFn: () => {
-      const payload = isFileSystemType ? { fileSystem: fs } : { database: db };
+      // [2026-04-22] FILE_SYSTEM_REALTIME: 폴링 간격을 초 단위로 통합 관리
+      // scanIntervalMinutes(초) → pollIntervalMs(ms) 자동 계산하여 함께 저장
+      // 에이전트/백엔드 양쪽이 동일 값을 사용한다.
+      const fileSystemPayload: FileSystemConfig = isRealtime
+        ? { ...fs, pollIntervalMs: (fs.scanIntervalMinutes ?? 60) * 1000 }
+        : fs;
+      const payload = isFileSystemType ? { fileSystem: fileSystemPayload } : { database: db };
       return updateDataSourceConfig(dataSource.dataSourceId, payload);
     },
     onSuccess: () => {
@@ -200,13 +225,37 @@ export default function ConfigForm({ dataSource }: Props) {
                 onChange={(v) => setFs({ ...fs, filePattern: v })}
                 placeholder="예: *.log  또는  app-*.csv"
               />
+              {/* [2026-04-22] 폴링 간격: 초 단위 통합. 에이전트/백엔드 모두 이 값 사용 */}
               <LabeledInput
-                label="폴링 간격(초)"
+                label="폴링 간격 (초)"
                 type="number"
-                value={String(fs.scanIntervalMinutes ?? "5")}
-                onChange={(v) => setFs({ ...fs, scanIntervalMinutes: v ? Number(v) : 5 })}
-                placeholder="기본값: 5초"
+                value={String(fs.scanIntervalMinutes ?? "60")}
+                onChange={(v) => setFs({ ...fs, scanIntervalMinutes: v ? Number(v) : 60 })}
+                placeholder="기본값: 60초 (1분)"
               />
+              {/* [2026-04-22] 수집기 공통 설정 — 에이전트/백엔드 직접 수집 모두 적용 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">폴 당 최대 처리 라인 수</label>
+                <input
+                  type="number"
+                  className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                  placeholder="예: 10000"
+                  value={fs.maxLinesPerPoll ?? ""}
+                  onChange={(e) => setFs({ ...fs, maxLinesPerPoll: e.target.value ? Number(e.target.value) : undefined })}
+                />
+                <p className="text-xs text-gray-400 mt-0.5">1회 폴링 시 읽을 최대 줄 수. 미입력 시 기본값 10,000 적용</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">최대 레코드 크기 (bytes)</label>
+                <input
+                  type="number"
+                  className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                  placeholder="예: 65536 (64KB).  0 = 제한 없음"
+                  value={fs.maxRecordBytes ?? ""}
+                  onChange={(e) => setFs({ ...fs, maxRecordBytes: e.target.value ? Number(e.target.value) : undefined })}
+                />
+                <p className="text-xs text-gray-400 mt-0.5">줄 크기가 이 값을 초과하면 잘라냅니다. 0 입력 시 제한 없음</p>
+              </div>
             </div>
           </div>
 
@@ -464,6 +513,84 @@ export default function ConfigForm({ dataSource }: Props) {
                   <option value="NUMBER">NUMBER (숫자 시퀀스/ID)</option>
                 </select>
               </div>
+              {/* [2026-04-21] 증분 컬럼 초기값 — 첫 수집 시작점 설정 */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  증분 컬럼 초기값
+                  <span className="ml-2 text-xs font-normal text-gray-400">(선택사항 — 첫 수집 시작 기준값)</span>
+                </label>
+                <input
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  type="text"
+                  value={db.incrementalColumnInitialValue || ""}
+                  onChange={(e) => setDb({ ...db, incrementalColumnInitialValue: e.target.value || undefined })}
+                  placeholder={
+                    (db.incrementalColumnType || "DATETIME") === "NUMBER"
+                      ? "예: 0  (이 값보다 큰 레코드부터 수집)"
+                      : "예: 2024-01-01 00:00:00  (이 시각 이후 레코드부터 수집)"
+                  }
+                />
+                <p className="mt-1 text-xs text-gray-400">
+                  미입력 시 DATETIME은 1970-01-01, NUMBER는 0부터 수집합니다. 이미 수집이 시작된 경우 이 값은 무시됩니다.
+                </p>
+              </div>
+              {/* [2026-04-22] 보조 증분 컬럼 — 복합 키 기반 증분 수집 (선택사항) */}
+              <div className="md:col-span-2">
+                <div className="border border-dashed border-gray-300 rounded-lg p-3 bg-gray-50">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-sm font-medium text-gray-700">보조 증분 컬럼</span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">선택사항</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-3">
+                    복합 키 기반 증분 수집 시 사용. 설정 시 메인 쿼리에 두 번째{" "}
+                    <code className="bg-gray-200 px-1 rounded text-xs">?</code> 플레이스홀더가 필요합니다.
+                    <br />
+                    <span className="text-gray-400">예: WHERE updated_at &gt;= ? AND seq_id &gt; ? ORDER BY updated_at, seq_id ASC</span>
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">보조 증분 컬럼명</label>
+                      <input
+                        type="text"
+                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                        placeholder="예: seq_id, id, row_num"
+                        value={db.secondaryIncrementalColumn || ""}
+                        onChange={(e) => setDb({ ...db, secondaryIncrementalColumn: e.target.value || undefined })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">보조 컬럼 타입</label>
+                      <select
+                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                        value={db.secondaryIncrementalColumnType || "NUMBER"}
+                        onChange={(e) => setDb({ ...db, secondaryIncrementalColumnType: e.target.value })}
+                        disabled={!db.secondaryIncrementalColumn}
+                      >
+                        <option value="NUMBER">NUMBER (숫자 시퀀스/ID)</option>
+                        <option value="DATETIME">DATETIME (날짜/시간)</option>
+                      </select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        보조 컬럼 초기값
+                        <span className="ml-2 text-xs font-normal text-gray-400">(선택사항 — 첫 수집 시작 기준값)</span>
+                      </label>
+                      <input
+                        type="text"
+                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                        placeholder={
+                          (db.secondaryIncrementalColumnType || "NUMBER") === "DATETIME"
+                            ? "예: 2024-01-01 00:00:00"
+                            : "예: 0  (이 값보다 큰 레코드부터 수집)"
+                        }
+                        value={db.secondaryIncrementalColumnInitialValue || ""}
+                        onChange={(e) => setDb({ ...db, secondaryIncrementalColumnInitialValue: e.target.value || undefined })}
+                        disabled={!db.secondaryIncrementalColumn}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
               <LabeledInput
                 label="배치 크기"
                 type="number"
@@ -471,6 +598,47 @@ export default function ConfigForm({ dataSource }: Props) {
                 onChange={(v) => setDb({ ...db, batchSize: v ? Number(v) : undefined })}
                 placeholder="기본값: 1000"
               />
+              {/* [2026-04-22] 폴링 간격(초) — 에이전트/백엔드 직접 폴링 모두 적용 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  폴링 간격 (초)
+                </label>
+                <input
+                  type="number"
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  placeholder="예: 300 (5분)"
+                  value={db.pollIntervalMs != null ? Math.round(db.pollIntervalMs / 1000) : ""}
+                  onChange={(e) => setDb({ ...db, pollIntervalMs: e.target.value ? Number(e.target.value) * 1000 : undefined })}
+                />
+                <p className="text-xs text-gray-400 mt-0.5">미입력 시 기본값 300초 (5분) 적용</p>
+              </div>
+              {/* [2026-04-22] 폴 당 최대 처리 행 수 — 에이전트/백엔드 모두 적용 */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  폴 당 최대 처리 행 수
+                  <span className="ml-2 text-xs font-normal text-gray-400">(maxLinesPerPoll)</span>
+                </label>
+                <input
+                  type="number"
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  placeholder="예: 1000"
+                  value={db.maxLinesPerPoll ?? ""}
+                  onChange={(e) => setDb({ ...db, maxLinesPerPoll: e.target.value ? Number(e.target.value) : undefined })}
+                />
+                <p className="text-xs text-gray-400 mt-0.5">1회 폴링 시 가져올 최대 행 수. 미입력 시 기본값 1,000 적용</p>
+              </div>
+              {/* [2026-04-22] 최대 레코드 크기 — 수집기 공통 설정 (에이전트/백엔드 직접 수집 모두 적용) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">최대 레코드 크기 (bytes)</label>
+                <input
+                  type="number"
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  placeholder="예: 65536 (64KB).  0 = 제한 없음"
+                  value={db.maxRecordBytes ?? ""}
+                  onChange={(e) => setDb({ ...db, maxRecordBytes: e.target.value ? Number(e.target.value) : undefined })}
+                />
+                <p className="text-xs text-gray-400 mt-0.5">레코드가 이 값을 초과하면 잘라냅니다. 0 입력 시 제한 없음</p>
+              </div>
             </div>
           </div>
 
@@ -509,7 +677,7 @@ export default function ConfigForm({ dataSource }: Props) {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
                     <span className="text-xs text-green-700">
-                      저장 시 선택된 에이전트에 JDBC 수집기가 자동 생성/업데이트되고 동기화됩니다.
+                      저장 시 선택된 에이전트에 전체 수집기 스냅샷이 자동 동기화됩니다.
                     </span>
                   </div>
                 </div>

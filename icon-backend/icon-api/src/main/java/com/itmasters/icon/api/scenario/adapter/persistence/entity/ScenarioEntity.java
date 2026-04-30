@@ -59,8 +59,9 @@ public class ScenarioEntity extends Auditable {
     private String detectionAreaId;
 
     // 엔진 설정 필드
-    @Column(name = "dedup_minutes")
-    private Integer dedupMinutes;   // 중복 제거 창 (분) - 동일 탐지 중복 방지
+    // [2026-04-24] DB DEFAULT 0 NOT NULL 과 일치하도록 Java 기본값 설정 (null 삽입 방지)
+    @Column(name = "dedup_minutes", nullable = false)
+    private Integer dedupMinutes = 0;   // 중복 제거 창 (분) - 0 = 중복 억제 없음
 
     // Phase 2: Primary Entity Type 업데이트
     public void updatePrimaryEntityType(String primaryEntityType) {

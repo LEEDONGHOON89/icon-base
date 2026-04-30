@@ -114,12 +114,29 @@ public class FileSystemRealtimeService {
                     .filter(r -> filePath.toAbsolutePath().toString().equals(r.getFilePath()))
                     .findFirst();
             if (byPath.isPresent()) {
-                log.info("[{}] File rotation detected (rename) - {}, resetting position",
-                        dataSourceId, filePath.getFileName());
-                positions.remove(byPath.get().getFileKey());
+                FileSystemRealtimePositionRecord oldRecord = byPath.get();
+                positions.remove(oldRecord.getFileKey());
+
+                // [2026-04-20] Windows에서 에디터 저장 시 creationTime 변경으로 fileKey가 바뀌는 경우 처리.
+                // currentSize >= oldOffset이면 파일 내용이 보존된 단순 재생성(에디터 저장)이므로
+                // 기존 offset과 headers를 그대로 이어받아 중복 수집 방지.
+                // currentSize < oldOffset인 경우에만 진짜 rotation으로 판단하여 offset 리셋.
+                if (currentSize >= oldRecord.getOffset()) {
+                    log.info("[{}] File re-created (editor save, key changed) - {}, keeping offset: {}",
+                            dataSourceId, filePath.getFileName(), oldRecord.getOffset());
+                    pos = new FileSystemRealtimePositionRecord(
+                            filePath.toAbsolutePath().toString(), currentKey, oldRecord.getOffset());
+                    pos.setHeaders(oldRecord.getHeaders());
+                } else {
+                    log.info("[{}] File rotation detected (rename) - {}, resetting position",
+                            dataSourceId, filePath.getFileName());
+                    pos = new FileSystemRealtimePositionRecord(
+                            filePath.toAbsolutePath().toString(), currentKey, 0L);
+                }
+            } else {
+                pos = new FileSystemRealtimePositionRecord(
+                        filePath.toAbsolutePath().toString(), currentKey, 0L);
             }
-            pos = new FileSystemRealtimePositionRecord(
-                    filePath.toAbsolutePath().toString(), currentKey, 0L);
             positions.put(currentKey, pos);
         }
 
@@ -136,7 +153,8 @@ public class FileSystemRealtimeService {
 
         Charset charset = resolveCharset(config);
         String format = detectFormat(filePath.getFileName().toString());
-        int linesRead = readNewLines(filePath, pos, charset, format, out);
+        // [2026-04-22] config를 readNewLines에 전달하여 maxLinesPerPoll/maxRecordBytes 적용
+        int linesRead = readNewLines(filePath, pos, charset, format, config, out);
 
         if (linesRead > 0) {
             pos.setLastUpdatedMs(System.currentTimeMillis());
@@ -145,11 +163,24 @@ public class FileSystemRealtimeService {
         return false;
     }
 
+    /**
+     * [2026-04-22] config 파라미터 추가 — maxLinesPerPoll / maxRecordBytes 백엔드 직접 수집에도 적용.
+     *   maxLinesPerPoll : 폴 당 최대 처리 라인 수 (0 또는 NULL → 1000 기본값)
+     *   maxRecordBytes  : 라인 최대 바이트 크기 (0 또는 NULL → 제한 없음)
+     *                     초과 시 라인을 잘라내고 [TRUNCATED] 마커를 추가한 뒤 파싱
+     */
     private int readNewLines(Path filePath,
                              FileSystemRealtimePositionRecord pos,
                              Charset charset,
                              String format,
+                             EngineDsFileSystemConfigEntity config,
                              List<Map<String, Object>> out) throws IOException {
+        // [2026-04-22] 제한값 결정 (NULL/0 → 기본값)
+        int maxLines     = (config.getMaxLinesPerPoll() != null && config.getMaxLinesPerPoll() > 0)
+                           ? config.getMaxLinesPerPoll() : 1000;
+        int maxBytes     = (config.getMaxRecordBytes()  != null && config.getMaxRecordBytes()  > 0)
+                           ? config.getMaxRecordBytes()  : 0; // 0 = 제한 없음
+
         int linesRead = 0;
         boolean isFirstRead = (pos.getOffset() == 0L);
 
@@ -169,13 +200,18 @@ public class FileSystemRealtimeService {
             }
 
             String line;
-            int lineNumber = 0;
-            while ((line = readLine(raf, charset)) != null) {
+            // [2026-04-22] maxLinesPerPoll 건수 기준 루프 종료
+            while (linesRead < maxLines && (line = readLine(raf, charset)) != null) {
                 if (line.trim().isEmpty()) {
                     pos.setOffset(raf.getFilePointer());
                     continue;
                 }
-                Map<String, Object> record = parseLine(line, format, pos.getHeaders(), ++lineNumber);
+                // [2026-04-22] maxRecordBytes 초과 시 라인 잘라내기
+                if (maxBytes > 0) {
+                    line = truncateLineIfNeeded(line, charset, maxBytes, filePath.getFileName().toString());
+                }
+                // [2026-04-21] lineNumber 파라미터 제거 (_line 필드 삭제에 따른 정리)
+                Map<String, Object> record = parseLine(line, format, pos.getHeaders());
                 if (record != null && !record.isEmpty()) {
                     out.add(record);
                     linesRead++;
@@ -186,22 +222,37 @@ public class FileSystemRealtimeService {
         return linesRead;
     }
 
-    private Map<String, Object> parseLine(String line, String format,
-                                          List<String> headers, int lineNumber) {
+    /**
+     * [2026-04-22] 라인 바이트 크기가 maxBytes를 초과하면 잘라내고 [TRUNCATED] 마커를 추가한다.
+     * icon-agent FileCollector.truncateIfNeeded()와 동일한 방식.
+     */
+    private String truncateLineIfNeeded(String line, Charset charset, int maxBytes, String source) {
+        byte[] bytes = line.getBytes(charset);
+        if (bytes.length <= maxBytes) return line;
+        int approxChars = (int) ((long) maxBytes * line.length() / bytes.length) - 60;
+        approxChars = Math.max(0, approxChars);
+        String marker = String.format("...[TRUNCATED: %d→%d bytes]", bytes.length, maxBytes);
+        log.warn("[백엔드 직접 수집] 레코드 크기 초과 — 잘라냄: {} ({} bytes > {} bytes 제한)",
+                source, bytes.length, maxBytes);
+        return line.substring(0, approxChars) + marker;
+    }
+
+    // [2026-04-21] _line(행 번호) 필드 제거 — landing_records에 불필요한 메타데이터 저장 방지
+    //              lineNumber 파라미터도 함께 제거
+    private Map<String, Object> parseLine(String line, String format, List<String> headers) {
         switch (format) {
             case "CSV":
-                return parseCsvRecord(line, headers, lineNumber);
+                return parseCsvRecord(line, headers);
             case "JSON":
                 return parseJsonLine(line);
             default:
                 Map<String, Object> rec = new LinkedHashMap<>();
                 rec.put("message", line);
-                rec.put("_line", lineNumber);
                 return rec;
         }
     }
 
-    private Map<String, Object> parseCsvRecord(String line, List<String> headers, int lineNumber) {
+    private Map<String, Object> parseCsvRecord(String line, List<String> headers) {
         List<String> values = parseCsvLine(line);
         Map<String, Object> rec = new LinkedHashMap<>();
 
@@ -216,7 +267,6 @@ public class FileSystemRealtimeService {
                 rec.put("col_" + i, values.get(i));
             }
         }
-        rec.put("_line", lineNumber);
         return rec;
     }
 

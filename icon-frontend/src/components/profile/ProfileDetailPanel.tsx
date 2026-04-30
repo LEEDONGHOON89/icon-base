@@ -14,7 +14,8 @@ interface ProfileDetailPanelProps {
     destinationType?: string,
     entityType?: string,
     entityIdField?: string,
-    storeFields?: string[]
+    storeFields?: string[],
+    timestampKey?: string
   ) => void;
 }
 
@@ -33,6 +34,8 @@ export default function ProfileDetailPanel({
   const [entityIdField, setEntityIdField] = useState<string>(profile?.entityIdField || "");
   const [storeFields, setStoreFields] = useState<string[]>(profile?.storeFields || []);
   const [newStoreField, setNewStoreField] = useState<string>("");
+  // [2026-04-23] event_stream 타임스탬프 키 상태 추가
+  const [timestampKey, setTimestampKey] = useState<string>(profile?.timestampKey || "");
 
   // 프로파일 변경 시 초기화
   useEffect(() => {
@@ -43,6 +46,7 @@ export default function ProfileDetailPanel({
     setEntityIdField(profile?.entityIdField || "");
     setStoreFields(profile?.storeFields || []);
     setNewStoreField("");
+    setTimestampKey(profile?.timestampKey || "");
   }, [profile, standardFields]);
 
   if (!profile) {
@@ -57,13 +61,21 @@ export default function ProfileDetailPanel({
     const finalDetectKey = detectKey.filter(Boolean).join(",");
     const finalDetectKeyType = detectKeyType || undefined;
 
+    // [2026-04-23] EVENT_STREAM 선택 시 timestampKey 필수 검증
+    const needsTimestamp = destinationType === "EVENT_STREAM" || destinationType === "BOTH";
+    if (needsTimestamp && !timestampKey.trim()) {
+      alert("이벤트 스트림 저장 방식 선택 시 타임스탬프 필드를 입력해야 합니다.");
+      return;
+    }
+
     onSave(
       finalDetectKey || undefined,
       finalDetectKeyType,
       destinationType,
       entityType || undefined,
       entityIdField || undefined,
-      storeFields.length > 0 ? storeFields : undefined
+      storeFields.length > 0 ? storeFields : undefined,
+      timestampKey.trim() || undefined
     );
   };
 
@@ -249,23 +261,52 @@ export default function ProfileDetailPanel({
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   저장 방식
                 </label>
+                {/* [2026-04-24] ENTITY_ATTRIBUTES → BOTH/ENTITY 로 수정 (실제 enum 값 반영) */}
                 <select
                   value={destinationType}
                   onChange={(e) => setDestinationType(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 >
                   <option value="EVENT_STREAM">이벤트 스트림만 저장</option>
-                  <option value="ENTITY_ATTRIBUTES">이벤트 스트림 + 엔티티 속성 저장</option>
+                  <option value="ENTITY">엔티티 속성만 저장</option>
+                  <option value="BOTH">이벤트 스트림 + 엔티티 속성 저장</option>
                 </select>
                 <p className="mt-1 text-xs text-gray-500">
                   {destinationType === "EVENT_STREAM"
                     ? "시계열 이벤트 데이터만 event_stream 테이블에 저장됩니다."
+                    : destinationType === "ENTITY"
+                    ? "entity_attributes 테이블에만 저장됩니다 (UPSERT)."
                     : "event_stream과 entity_attributes 양쪽에 저장됩니다 (UPSERT)."}
                 </p>
               </div>
 
-              {/* Entity Type (ENTITY_ATTRIBUTES 선택 시만 표시) */}
-              {destinationType === "ENTITY_ATTRIBUTES" && (
+              {/* 타임스탬프 필드 (EVENT_STREAM / BOTH 선택 시 필수) */}
+              {(destinationType === "EVENT_STREAM" || destinationType === "BOTH") && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    타임스탬프 필드 <span className="text-red-500">*필수</span>
+                  </label>
+                  <select
+                    value={timestampKey}
+                    onChange={(e) => setTimestampKey(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    <option value="">필드 선택</option>
+                    {standardFields.map(field => (
+                      <option key={field.fieldId} value={field.fieldName || field.fieldId}>
+                        {field.displayName} - {field.fieldName || field.fieldId}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500">
+                    event_stream의 시간축으로 사용할 필드 (예: 거래일시, 발생시각)
+                  </p>
+                </div>
+              )}
+
+              {/* Entity Type (ENTITY 또는 BOTH 선택 시 표시) */}
+              {/* [2026-04-24] ENTITY_ATTRIBUTES → ENTITY || BOTH 로 수정 */}
+              {(destinationType === "ENTITY" || destinationType === "BOTH") && (
                 <>
                   {/* 엔티티 타입과 Entity ID 필드를 1줄로 배치 */}
                   <div className="grid grid-cols-2 gap-4">

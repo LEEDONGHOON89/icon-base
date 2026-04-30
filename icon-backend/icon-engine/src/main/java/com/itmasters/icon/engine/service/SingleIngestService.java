@@ -31,7 +31,9 @@ public class SingleIngestService {
      * @param records       에이전트가 전송한 파싱된 레코드 목록 (Map 형태)
      * @param executedBy    실행자 식별자 (agentId 등)
      */
-    @Async
+    // [2026-04-23] executor 명시 지정 — SimpleAsyncTaskExecutor(무제한 스레드) 폴백 방지
+    //              대량 배치 수신 시 스레드 폭증(CPU 97%) 원인이었으므로 ingestTaskExecutor 사용
+    @Async("ingestTaskExecutor")
     public void ingestBatchAndRun(String dataSourceId, List<Map<String, Object>> records, String executedBy) {
         if (records == null || records.isEmpty()) {
             log.debug("[Agent] 빈 배치 수신 - dataSourceId={}, 스킵", dataSourceId);

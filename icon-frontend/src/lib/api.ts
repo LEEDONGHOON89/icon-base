@@ -2,8 +2,10 @@ import axios from "axios";
 import { authAtom } from "@/atoms/authAtom";
 import { toast } from "react-hot-toast";
 
+// [2026-04-17] baseURL 제거: next.config.ts rewrites로 /api/* → localhost:11100 프록시
+// 브라우저가 동일 오리진으로 호출하므로 CORS 불필요, 서버 IP 하드코딩 제거
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL,
+  baseURL: '',
   headers: {
     "Content-Type": "application/json",
   },

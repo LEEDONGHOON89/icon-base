@@ -28,6 +28,7 @@ import {
   MagnifyingGlassCircleIcon,
   SparklesIcon,
   ServerStackIcon,
+  ScissorsIcon,
 } from "@heroicons/react/24/outline";
 import { useState } from "react";
 import { ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
@@ -58,7 +59,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (
       pathname.startsWith("/fields") ||
       pathname.startsWith("/data-sources") ||
-      pathname.startsWith("/agents")
+      pathname.startsWith("/agents") ||
+      pathname.startsWith("/parsers")
     ) {
       expanded.push("system");
     }
@@ -119,7 +121,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         accessToken: null,
         refreshToken: null,
       });
-      setUser(null); // 사용자 정보도 초기화
+      setUser(null);
       router.push("/login");
     }
   };
@@ -261,7 +263,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       icon: CogIcon,
       color: "from-slate-500 to-slate-600",
       children: [
-        // 데이터 연동
         {
           name: "데이터소스",
           href: "/data-sources",
@@ -278,15 +279,19 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           href: "/fields/entity",
           icon: TableCellsIcon,
         },
-
         {
           name: "에이전트 관리",
           href: "/agents",
           icon: ServerStackIcon,
         },
+        // [2026-04-20] 파서 관리 메뉴 추가
+        {
+          name: "파서 관리",
+          href: "/parsers",
+          icon: ScissorsIcon,
+        },
       ],
     },
-
   ];
 
   const toggleMenu = (menuId: string) => {
@@ -303,12 +308,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
     menuItems.forEach((item) => {
       if (item.href) {
-        // 직접 href가 있는 메뉴 (대시보드 등)
         items.push({ name: item.name, href: item.href });
       }
 
       if ('children' in item && item.children) {
-        // 자식 메뉴가 있는 경우
         (item.children as any[]).forEach((child) => {
           items.push({
             name: child.name,
@@ -418,7 +421,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </div>
       )}
 
-      {/* Sidebar backdrop - transparent, only for closing */}
+      {/* Sidebar backdrop */}
       {isSidebarOpen && (
         <div
           className="lg:hidden fixed inset-0 z-30"
@@ -430,8 +433,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       <aside
         className={`
         fixed inset-y-0 left-0 z-40 w-72 bg-white shadow-xl transition-transform duration-300 ease-in-out h-screen overflow-y-auto
-        ${isSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-          }
+        ${isSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
       `}
       >
         <div className="flex flex-col h-full">
@@ -469,9 +471,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                       className={`
                         w-full group flex items-center px-4 py-3 rounded-xl transition-all duration-200 relative overflow-hidden
                         ${hasActiveChild
-                          ? "bg-gradient-to-r " +
-                          item.color +
-                          " text-white shadow-lg"
+                          ? "bg-gradient-to-r " + item.color + " text-white shadow-lg"
                           : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                         }
                       `}
@@ -479,10 +479,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                       <Icon
                         className={`
                         h-6 w-6 transition-transform duration-200
-                        ${hasActiveChild
-                            ? "text-white"
-                            : "text-gray-500 group-hover:text-gray-700"
-                          }
+                        ${hasActiveChild ? "text-white" : "text-gray-500 group-hover:text-gray-700"}
                       `}
                       />
                       <span className="ml-3 font-medium flex-1 text-left">
@@ -518,10 +515,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                               <ChildIcon
                                 className={`
                                 h-5 w-5 transition-transform duration-200
-                                ${isActive
-                                    ? "text-gray-700"
-                                    : "text-gray-400 group-hover:text-gray-600"
-                                  }
+                                ${isActive ? "text-gray-700" : "text-gray-400 group-hover:text-gray-600"}
                               `}
                               />
                               <span className="ml-3 text-sm font-medium">
@@ -536,7 +530,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 );
               }
 
-              // Regular menu item (items without children must have href)
+              // Regular menu item
               if (!item.href) return null;
 
               const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
@@ -548,9 +542,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   className={`
                     group flex items-center px-4 py-3 rounded-xl transition-all duration-200 relative overflow-hidden
                     ${isActive
-                      ? "bg-gradient-to-r " +
-                      item.color +
-                      " text-white shadow-lg transform scale-105"
+                      ? "bg-gradient-to-r " + item.color + " text-white shadow-lg transform scale-105"
                       : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                     }
                   `}
@@ -559,10 +551,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   <Icon
                     className={`
                     h-6 w-6 transition-transform duration-200
-                    ${isActive
-                        ? "text-white"
-                        : "text-gray-500 group-hover:text-gray-700"
-                      }
+                    ${isActive ? "text-white" : "text-gray-500 group-hover:text-gray-700"}
                     ${isActive ? "scale-110" : "group-hover:scale-110"}
                   `}
                   />
@@ -602,6 +591,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0 lg:ml-72">
         {/* Header */}
+        {/* [2026-04-29] 탭 기능 제거 — TabBar 삭제, 헤더 단순화 */}
         <header className="bg-white shadow-sm border-b border-gray-200 lg:pl-0 pl-16 sticky top-0 z-20">
           <div className="flex items-center justify-between h-16 px-6">
             {/* 검색 입력 */}
@@ -677,7 +667,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-auto p-4 bg-gradient-to-br ">
+        <main className="flex-1 overflow-auto p-4 bg-gradient-to-br">
           {children}
         </main>
       </div>
