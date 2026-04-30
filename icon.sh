@@ -211,6 +211,46 @@ check_postgres() {
         fi
     fi
     info "PostgreSQL 서비스 실행 중"
+
+    # [2026-04-30] TCP 접속 가능 여부 사전 확인 — sudo -u postgres 없이 운영
+    check_db_tcp
+}
+
+# [2026-04-30] PostgreSQL TCP 직접 접속 확인
+#   sudo -u postgres 권한 없는 환경에서 동작하도록 sudo 의존 완전 제거.
+#   TCP 접속 불가 시 관리자(DBA) 전용 초기 설정 가이드를 출력하고 종료.
+check_db_tcp() {
+    if PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" \
+            -U "$DB_USER" -d "postgres" -c "SELECT 1" &>/dev/null; then
+        return  # TCP 접속 성공
+    fi
+
+    error "PostgreSQL TCP 접속 실패: host=$DB_HOST port=$DB_PORT user=$DB_USER"
+    echo ""
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}  [초기 1회 설정] PostgreSQL 관리자가 실행해야 합니다${NC}"
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo "  # 1) postgres 계정으로 DB 및 비밀번호 설정"
+    echo "  sudo -u postgres psql << 'PSQL'"
+    echo "  ALTER USER postgres PASSWORD '$DB_PASS';"
+    echo "  CREATE DATABASE $DB_NAME ENCODING 'UTF8'"
+    echo "      LC_COLLATE 'en_US.UTF-8' LC_CTYPE 'en_US.UTF-8'"
+    echo "      TEMPLATE template0;"
+    echo "  PSQL"
+    echo ""
+    echo "  # 2) pg_hba.conf 에 TCP 인증 규칙 추가"
+    echo "  PG_HBA=\$(sudo -u postgres psql -tAc 'SHOW hba_file')"
+    echo "  echo \"host  $DB_NAME  $DB_USER  127.0.0.1/32  md5\" | sudo tee -a \"\$PG_HBA\""
+    echo ""
+    echo "  # 3) PostgreSQL 설정 재적용"
+    echo "  sudo systemctl reload postgresql   # 또는 reload postgresql-16 등 버전 명시"
+    echo ""
+    echo "  # 4) 접속 확인 후 icon.sh 재실행"
+    echo "  PGPASSWORD=$DB_PASS psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -c 'SELECT 1'"
+    echo "  ./icon.sh start"
+    echo ""
+    exit 1
 }
 
 check_deps() {
@@ -229,38 +269,30 @@ INIT_SQL="${BASE_DIR}/db/init.sql"
 setup_database() {
     section "DB 초기화"
 
-    # postgres 슈퍼유저로 DB 존재 확인
-    DB_EXISTS=$(sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" 2>/dev/null || true)
+    # [2026-04-30] sudo -u postgres 완전 제거 — TCP 직접 접속만 사용
+    #   check_db_tcp 에서 접속 가능 여부를 이미 확인했으므로 여기서는 psql 직접 사용
+    local pg_cmd="psql -h $DB_HOST -p $DB_PORT -U $DB_USER"
+
+    # DB 존재 확인 (postgres 기본 DB에 접속)
+    DB_EXISTS=$(PGPASSWORD="$DB_PASS" $pg_cmd -d "postgres" \
+        -tAc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" 2>/dev/null || echo "")
 
     if [ "$DB_EXISTS" != "1" ]; then
         info "DB '$DB_NAME' 생성 중..."
-        sudo -u postgres psql -c "CREATE DATABASE $DB_NAME ENCODING 'UTF8' LC_COLLATE 'en_US.UTF-8' LC_CTYPE 'en_US.UTF-8' TEMPLATE template0;" 2>/dev/null || \
-        sudo -u postgres psql -c "CREATE DATABASE $DB_NAME;"
+        PGPASSWORD="$DB_PASS" $pg_cmd -d "postgres" \
+            -c "CREATE DATABASE $DB_NAME ENCODING 'UTF8' \
+                LC_COLLATE 'en_US.UTF-8' LC_CTYPE 'en_US.UTF-8' \
+                TEMPLATE template0;" &>/dev/null || \
+        PGPASSWORD="$DB_PASS" $pg_cmd -d "postgres" \
+            -c "CREATE DATABASE $DB_NAME;" || {
+            error "DB '$DB_NAME' 생성 실패. 관리자 권한 필요 시 check_db_tcp 가이드를 참고하세요."
+            exit 1
+        }
         info "DB '$DB_NAME' 생성 완료"
         DB_IS_NEW=true
     else
         info "DB '$DB_NAME' 이미 존재함"
         DB_IS_NEW=false
-    fi
-
-    # [2026-04-30] postgres 비밀번호 항상 동기화 — 신규·기존 DB 모두
-    #   run_migrations 의 TCP 인증(PGPASSWORD)이 반드시 성공해야 하므로
-    #   peer auth(sudo)로 비밀번호를 설정해 TCP 인증을 보장
-    sudo -u postgres psql -c "ALTER USER $DB_USER PASSWORD '$DB_PASS';" &>/dev/null || true
-
-    # pg_hba.conf md5 인증 확인 (password 접속 가능하도록)
-    PG_HBA=$(sudo -u postgres psql -tAc "SHOW hba_file;" 2>/dev/null || true)
-    if [ -n "$PG_HBA" ]; then
-        if ! sudo grep -q "host.*$DB_NAME.*$DB_USER.*md5" "$PG_HBA" 2>/dev/null; then
-            info "pg_hba.conf에 md5 인증 규칙 추가 중..."
-            echo "host    $DB_NAME    $DB_USER    127.0.0.1/32    md5" | sudo tee -a "$PG_HBA" > /dev/null
-            # [2026-04-17] pg_lsclusters 제거 (Debian 전용) → systemctl reload 사용
-            for svc in postgresql-17 postgresql-16 postgresql-15 postgresql-14 postgresql; do
-                if systemctl list-unit-files 2>/dev/null | grep -q "^${svc}\.service"; then
-                    sudo systemctl reload "$svc" 2>/dev/null || true; break
-                fi
-            done
-        fi
     fi
 
     # [2026-04-17] DB 신규 생성 시 init.sql로 전체 스키마 한 번에 초기화
@@ -270,6 +302,7 @@ setup_database() {
 }
 
 # [2026-04-17] 통합 init.sql 적용 (DB 버전 1.0.0 기준선)
+# [2026-04-30] sudo 제거 — TCP 직접 접속
 run_init_sql() {
     local psql_cmd="psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME"
 
@@ -279,7 +312,7 @@ run_init_sql() {
     fi
 
     info "DB 스키마 초기화 중 (v1.0.0): $INIT_SQL"
-    if $psql_cmd --set=ON_ERROR_STOP=on -f "$INIT_SQL" &>/dev/null; then
+    if PGPASSWORD="$DB_PASS" $psql_cmd --set=ON_ERROR_STOP=on -f "$INIT_SQL" &>/dev/null; then
         local tbl_count
         tbl_count=$(grep -c 'CREATE TABLE IF NOT EXISTS' "$INIT_SQL")
         info "DB 스키마 초기화 완료 — ${tbl_count}개 테이블 (v1.0.0)"
@@ -288,7 +321,7 @@ run_init_sql() {
         # → 이후 run_migrations()가 동일 버전을 재적용하지 않도록 방지
         local init_checksum
         init_checksum=$(md5sum "$INIT_SQL" | awk '{print $1}')
-        $psql_cmd -c "
+        PGPASSWORD="$DB_PASS" $psql_cmd -c "
             CREATE TABLE IF NOT EXISTS icon_migrations (
                 id          SERIAL       PRIMARY KEY,
                 version     VARCHAR(50)  NOT NULL UNIQUE,
@@ -302,7 +335,7 @@ run_init_sql() {
         " &>/dev/null || true
     else
         warn "init.sql 일부 오류 발생 — 상세 내용:"
-        $psql_cmd -f "$INIT_SQL" 2>&1 | grep -i "error" | head -10 || true
+        PGPASSWORD="$DB_PASS" $psql_cmd -f "$INIT_SQL" 2>&1 | grep -i "error" | head -10 || true
         error "DB 초기화 실패. 수동으로 확인하세요: $INIT_SQL"
         exit 1
     fi
@@ -376,7 +409,7 @@ run_migrations() {
 
         # 이미 적용된 버전 확인
         local already_applied
-        already_applied=$($psql_cmd -tAc "SELECT COUNT(*) FROM icon_migrations WHERE version='$version'" 2>/dev/null || echo "0")
+        already_applied=$(PGPASSWORD="$DB_PASS" $psql_cmd -tAc "SELECT COUNT(*) FROM icon_migrations WHERE version='$version'" 2>/dev/null || echo "0")
 
         if [ "$already_applied" = "1" ]; then
             info "  SKIP  $filename (이미 적용됨)"
@@ -385,8 +418,8 @@ run_migrations() {
         fi
 
         info "  APPLY $filename"
-        if $psql_cmd --set=ON_ERROR_STOP=on -f "$sql_file" &>/dev/null; then
-            $psql_cmd -c "
+        if PGPASSWORD="$DB_PASS" $psql_cmd --set=ON_ERROR_STOP=on -f "$sql_file" &>/dev/null; then
+            PGPASSWORD="$DB_PASS" $psql_cmd -c "
                 INSERT INTO icon_migrations (version, filename, checksum)
                 VALUES ('$version', '$filename', '$checksum');
             " &>/dev/null
