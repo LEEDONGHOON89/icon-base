@@ -28,6 +28,8 @@ DB_NAME="icon"
 DB_USER="postgres"
 DB_PASS="1234"
 export PGPASSWORD="$DB_PASS"
+# [2026-04-30] psql 연결 명령 전역 변수 — run_migrations 에서 결정 후 inline migration 공유
+PSQL_CMD=""
 
 # [2026-04-21] JVM 옵션 경량화 (백엔드 전용 — 에이전트는 icon-agent.bat / icon-agent.ps1 참조)
 JAVA_OPTS=(
@@ -134,7 +136,8 @@ check_node() {
     if command -v node &>/dev/null; then
         NODE_VER=$(node -v | sed 's/v//' | cut -d. -f1)
         if [ "$NODE_VER" -ge 18 ] 2>/dev/null; then
-            info "Node.js v$(node -v) 확인됨"; return
+            # [2026-04-30] node -v 가 이미 "v21.x" 형태를 반환하므로 추가 v 제거
+            info "Node.js $(node -v) 확인됨"; return
         else
             warn "Node.js v$(node -v) 감지 (18 이상 필요)"
         fi
@@ -240,11 +243,10 @@ setup_database() {
         DB_IS_NEW=false
     fi
 
-    # [2026-04-29] postgres 사용자 비밀번호 설정 — 신규 DB 생성 시에만 적용
-    #   기존 서버에서 start 실행 시 기존 패스워드를 덮어쓰는 문제 방지
-    if [ "$DB_IS_NEW" = true ]; then
-        sudo -u postgres psql -c "ALTER USER $DB_USER PASSWORD '$DB_PASS';" &>/dev/null || true
-    fi
+    # [2026-04-30] postgres 비밀번호 항상 동기화 — 신규·기존 DB 모두
+    #   run_migrations 의 TCP 인증(PGPASSWORD)이 반드시 성공해야 하므로
+    #   peer auth(sudo)로 비밀번호를 설정해 TCP 인증을 보장
+    sudo -u postgres psql -c "ALTER USER $DB_USER PASSWORD '$DB_PASS';" &>/dev/null || true
 
     # pg_hba.conf md5 인증 확인 (password 접속 가능하도록)
     PG_HBA=$(sudo -u postgres psql -tAc "SHOW hba_file;" 2>/dev/null || true)
@@ -315,8 +317,9 @@ run_migrations() {
 
     local psql_cmd="psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME"
 
-    # 마이그레이션 추적 테이블 생성 (없을 경우 — 기존 DB 호환)
-    $psql_cmd -c "
+    # [2026-04-30] 마이그레이션 추적 테이블 생성 — || true 로 set -e 탈출 방지
+    #   psql 인증 실패 시 명확한 에러 메시지 출력 후 종료
+    if ! $psql_cmd -c "
         CREATE TABLE IF NOT EXISTS icon_migrations (
             id          SERIAL      PRIMARY KEY,
             version     VARCHAR(50) NOT NULL UNIQUE,
@@ -324,7 +327,24 @@ run_migrations() {
             applied_at  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
             checksum    VARCHAR(64)
         );
-    " &>/dev/null
+    " &>/dev/null; then
+        error "DB 마이그레이션 테이블 생성 실패 — psql 인증 오류 가능성"
+        error "  psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME 연결을 수동 확인하세요."
+        # [2026-04-30] sudo peer auth 로 폴백 시도
+        warn "sudo peer 인증으로 폴백 시도..."
+        psql_cmd="sudo -u postgres psql -d $DB_NAME"
+        $psql_cmd -c "
+            CREATE TABLE IF NOT EXISTS icon_migrations (
+                id          SERIAL      PRIMARY KEY,
+                version     VARCHAR(50) NOT NULL UNIQUE,
+                filename    VARCHAR(255) NOT NULL,
+                applied_at  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                checksum    VARCHAR(64)
+            );" &>/dev/null || { error "DB 마이그레이션 테이블 생성 최종 실패"; exit 1; }
+        warn "sudo peer 인증으로 마이그레이션 진행"
+    fi
+    # [2026-04-30] 결정된 psql_cmd 을 전역 PSQL_CMD 에 저장 (apply_inline_migration 공유)
+    PSQL_CMD="$psql_cmd"
 
     if [ ! -d "$MIGRATION_DIR" ]; then
         info "마이그레이션 디렉토리 없음: $MIGRATION_DIR (건너뜀)"
@@ -394,11 +414,12 @@ run_migrations() {
 
 # [2026-04-21] 인라인 마이그레이션 헬퍼
 # 사용법: apply_inline_migration "1.0.6" "V1_0_6__desc" "SQL 문장"
+# [2026-04-30] PSQL_CMD 전역 변수 사용 (resolve_psql_cmd 로 결정된 명령)
 apply_inline_migration() {
     local version="$1"
     local filename="$2"
     local sql="$3"
-    local psql_cmd="psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME"
+    local psql_cmd="${PSQL_CMD:-psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME}"
 
     local already_applied
     already_applied=$($psql_cmd -tAc "SELECT COUNT(*) FROM icon_migrations WHERE version='$version'" 2>/dev/null || echo "0")
@@ -423,7 +444,8 @@ apply_inline_migration() {
 }
 
 run_inline_migrations() {
-    local psql_cmd="psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME"
+    # [2026-04-30] PSQL_CMD 전역 변수 사용
+    local psql_cmd="${PSQL_CMD:-psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME}"
 
     # icon_migrations 테이블이 없으면 인라인 적용 불가 — 건너뜀
     local tbl_exists
